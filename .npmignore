@@ -1,0 +1,33 @@
+# Test files
+*.test.js
+*.spec.js
+test/
+tests/
+__tests__/
+coverage/
+
+# Documentation
+docs/
+*.md
+!README.md
+!README.zh-TW.md
+
+# Config files
+.eslintrc.json
+.prettierrc
+.editorconfig
+.gitignore
+
+# CI/CD
+.github/
+.travis.yml
+.gitlab-ci.yml
+
+# Development
+src/**/*.test.js
+examples/
+
+# Misc
+.vscode/
+.idea/
+.DS_Store
