@@ -1,11 +1,10 @@
 {
   "name": "ai-git-tools",
-  "version": "1.0.0",
+  "version": "2.0.22",
   "description": "AI-powered Git automation tools for commit messages and PR generation",
   "main": "src/index.js",
   "type": "module",
   "bin": {
-    "gitai": "./bin/cli.js",
     "ai-git-tools": "./bin/cli.js"
   },
   "scripts": {
@@ -40,7 +39,7 @@
     "CHANGELOG.md"
   ],
   "dependencies": {
-    "@github/copilot-sdk": "^1.0.0",
+    "@github/copilot-sdk": "0.1.20",
     "commander": "^12.0.0",
     "chalk": "^5.3.0",
     "ora": "^8.0.1",

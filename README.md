@@ -29,7 +29,9 @@ npx ai-git-tools commit
 
 ```bash
 npm install -g ai-git-tools
-gitai init
+ai-git-tools init
+# 或使用 npx（無需全域安裝）
+npx ai-git-tools init
 ```
 
 ### 專案內安裝
@@ -40,9 +42,9 @@ npm install --save-dev ai-git-tools
 # 加入 package.json scripts
 {
   "scripts": {
-    "commit": "gitai commit",
-    "commit:all": "gitai commit-all",
-    "pr": "gitai pr"
+    "commit": "ai-git-tools commit",
+    "commit:all": "ai-git-tools commit-all",
+    "pr": "ai-git-tools pr"
   }
 }
 ```
@@ -52,7 +54,7 @@ npm install --save-dev ai-git-tools
 ### 1. 初始化配置
 
 \`\`\`bash
-npx gitai init
+npx ai-git-tools init
 \`\`\`
 
 這會在您的專案根目錄創建 \`.ai-git-config.js\` 配置檔。
@@ -65,7 +67,7 @@ npx gitai init
 
 \`\`\`bash
 git add src/components/Button.jsx
-npx gitai commit
+npx ai-git-tools commit
 \`\`\`
 
 #### 智能批量 Commit
@@ -73,15 +75,15 @@ npx gitai commit
 自動分析所有變更並分組提交：
 
 \`\`\`bash
-npx gitai commit-all
+npx ai-git-tools commit-all
 # 或簡寫
-npx gitai ca
+npx ai-git-tools ca
 \`\`\`
 
 #### 創建 PR
 
 \`\`\`bash
-npx gitai pr
+npx ai-git-tools pr
 \`\`\`
 
 #### 完整工作流程
@@ -89,9 +91,9 @@ npx gitai pr
 Commit + PR 一次完成：
 
 \`\`\`bash
-npx gitai workflow
+npx ai-git-tools workflow
 # 或簡寫
-npx gitai wf
+npx ai-git-tools wf
 \`\`\`
 
 ## 📖 命令說明
@@ -101,7 +103,7 @@ npx gitai wf
 初始化配置檔案
 
 \`\`\`bash
-npx gitai init
+npx ai-git-tools init
 \`\`\`
 
 ### \`gitai commit\`
@@ -109,7 +111,7 @@ npx gitai init
 為已 staged 的變更生成並執行 commit
 
 \`\`\`bash
-npx gitai commit [選項]
+npx ai-git-tools commit [選項]
 
 選項:
   -m, --model <model>          指定 AI 模型
@@ -121,9 +123,9 @@ npx gitai commit [選項]
 **範例：**
 
 \`\`\`bash
-npx gitai commit
-npx gitai commit --model claude-haiku-4.5
-npx gitai commit --verbose
+npx ai-git-tools commit
+npx ai-git-tools commit --model claude-haiku-4.5
+npx ai-git-tools commit --verbose
 \`\`\`
 
 ### \`gitai commit-all\` (別名: \`ca\`)
@@ -131,7 +133,7 @@ npx gitai commit --verbose
 智能分析所有變更並自動分組提交
 
 \`\`\`bash
-npx gitai commit-all [選項]
+npx ai-git-tools commit-all [選項]
 
 選項:
   -m, --model <model>          指定 AI 模型
@@ -143,8 +145,8 @@ npx gitai commit-all [選項]
 **範例：**
 
 \`\`\`bash
-npx gitai commit-all
-npx gitai ca --verbose
+npx ai-git-tools commit-all
+npx ai-git-tools ca --verbose
 \`\`\`
 
 ### \`gitai pr\`
@@ -152,28 +154,25 @@ npx gitai ca --verbose
 生成 PR 並發送到 GitHub
 
 \`\`\`bash
-npx gitai pr [選項]
+npx ai-git-tools pr [選項]
 
 選項:
-  -b, --base <branch>          目標分支
-  -h, --head <branch>          來源分支
+  -b, --base <branch>          目標分支 (預設: 配置檔的 defaultBase 或自動偵測)
   -m, --model <model>          指定 AI 模型
-  --draft                      創建草稿 PR
   --preview                    僅預覽，不創建 PR
   --no-confirm                 跳過確認直接創建
-  --auto-reviewers             自動選擇 reviewers
-  --auto-labels                自動添加 Labels
-  --no-labels                  不添加 Labels
-  --org <name>                 GitHub 組織名稱
+  --interactive-reviewers      啟用互動式 reviewer 選擇 (預設啟用)
+  --auto-labels                自動添加 Labels (預設啟用)
+  --include-impact             在 PR 中包含影響範圍分析和注意事項 (預設關閉)
 \`\`\`
 
 **範例：**
 
 \`\`\`bash
-npx gitai pr
-npx gitai pr --draft
-npx gitai pr --base main --auto-reviewers
-npx gitai pr --preview
+npx ai-git-tools pr
+npx ai-git-tools pr --base release-2025-m12.1
+npx ai-git-tools pr --preview
+npx ai-git-tools pr --no-confirm
 \`\`\`
 
 ### \`gitai workflow\` (別名: \`wf\`)
@@ -181,22 +180,21 @@ npx gitai pr --preview
 完整工作流程：commit-all + pr
 
 \`\`\`bash
-npx gitai workflow [選項]
+npx ai-git-tools workflow [選項]
 
 選項:
   -m, --model <model>          指定 AI 模型
   -v, --verbose                顯示詳細輸出
-  -b, --base <branch>          PR 目標分支
-  --draft                      創建草稿 PR
-  --auto-reviewers             自動選擇 reviewers
-  --auto-labels                自動添加 Labels
+  -b, --base <branch>          PR 目標分支 (預設: 配置檔 defaultBase 或自動偵測)
+  --preview                    僅預覽 PR，不創建
+  --auto-labels                自動添加 Labels (預設啟用)
 \`\`\`
 
 **範例：**
 
 \`\`\`bash
-npx gitai workflow
-npx gitai wf --draft --auto-reviewers
+npx ai-git-tools workflow
+npx ai-git-tools wf --preview
 \`\`\`
 
 ## ⚙️ 配置
@@ -214,17 +212,17 @@ export default {
 
   // GitHub 設定
   github: {
-    orgName: null, // 組織名稱（自動偵測）
-    defaultBase: 'auto', // 預設目標分支
+    defaultBase: 'release', // 預設目標分支：'release'=自動查找最新，或指定具體分支名
     autoLabels: true, // 自動添加 Labels
+    includeImpactAnalysis: false, // 是否在 PR 中包含影響範圍分析和注意事項 (使用 --include-impact 啟用)
   },
 
   // Reviewer 設定
   reviewers: {
-    autoSelect: false, // 啟用 reviewer 選擇
+    interactiveReviewers: true, // true=啟用互動式選擇，false=不添加任何 reviewers
     maxSuggested: 5, // 最多建議人數
     gitHistoryDepth: 20, // Git 歷史分析深度
-    excludeAuthors: [], // 排除特定作者
+    excludeAuthors: [], // 排除特定作者（最高優先順序，即使手動選擇也會被過濾）
   },
 
   // 輸出設定
@@ -234,6 +232,44 @@ export default {
   },
 };
 \`\`\`
+
+### defaultBase 配置說明
+
+\`defaultBase\` 支援兩種模式：
+
+#### 1. 自動模式（推薦）
+```javascript
+github: {
+  defaultBase: 'release',  // 自動查找最新的 release 分支
+}
+```
+- 工具會自動偵測所有 \`release-*\` 或 \`release/*\` 格式的分支
+- 自動選擇最新版本（優先選擇月度分支，如 release-2025-m12.1）
+- 適合經常更新 release 版本的專案
+
+#### 2. 具體分支模式
+```javascript
+github: {
+  defaultBase: 'release-2025-m12.1',  // 固定使用此分支
+}
+```
+- 直接使用指定的分支名稱
+- 適合需要固定某個版本的情況
+- 或使用 \`main\`、\`develop\` 等標準分支
+
+**範例輸出**：
+```bash
+# 使用 defaultBase: 'release'
+配置檔指定使用 release 分支，正在偵測最新版本...
+📋 偵測到的 release 分支:
+  月度分支 (優先):
+    1. release-2025-m12.1 ← 最新
+    2. release-2025-m11.1
+✅ 自動選擇最新 release 分支: release-2025-m12.1
+
+# 使用 defaultBase: 'release-2025-m12.1'
+✅ 使用配置檔指定的分支: release-2025-m12.1
+```
 
 ## 🔧 環境需求
 
@@ -251,7 +287,7 @@ export default {
 
 \`\`\`bash
 git add src/components/LoginForm.jsx
-npx gitai commit
+npx ai-git-tools commit
 # ✅ 自動生成：feat(auth): 新增登入表單元件
 \`\`\`
 
@@ -260,7 +296,7 @@ npx gitai commit
 累積了多個功能變更，想要分開提交：
 
 \`\`\`bash
-npx gitai commit-all
+npx ai-git-tools commit-all
 # AI 會自動分析並分組：
 # ✅ Commit 1: feat(auth): 新增登入功能
 # ✅ Commit 2: fix(ui): 修正導航列顯示問題
@@ -270,7 +306,7 @@ npx gitai commit-all
 ### 場景 3：快速發 PR
 
 \`\`\`bash
-npx gitai pr --auto-reviewers --auto-labels
+npx ai-git-tools pr --auto-labels
 # ✅ 自動生成完整的 PR 標題和描述
 # ✅ 建議合適的 reviewers
 # ✅ 添加相關的 labels
@@ -279,7 +315,7 @@ npx gitai pr --auto-reviewers --auto-labels
 ### 場景 4：完整工作流程
 
 \`\`\`bash
-npx gitai workflow
+npx ai-git-tools workflow
 # ✅ 自動分析並提交所有變更
 # ✅ 創建 PR 並添加 reviewers 和 labels
 \`\`\`
