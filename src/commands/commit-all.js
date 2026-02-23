@@ -1,33 +1,101 @@
 /**
  * Commit All 命令
- * 
- * 智能分析所有變更並自動分組提交
+ * 基於 scripts/ai-auto-commit-all.mjs
+ * 智慧分析所有變更並自動分類提交
  */
 
-import chalk from 'chalk';
-import { loadConfig } from '../core/config-loader.js';
+import { execSync } from 'child_process';
+import { readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { loadCommitConfig } from '../core/config-loader.js';
 import { AIClient } from '../core/ai-client.js';
-import { GitOperations } from '../core/git-operations.js';
 import { Logger } from '../utils/logger.js';
-import { 
-  handleError, 
-  validateCommitMessage, 
-  formatFileList,
-  getProjectTypePrompt,
-  getConventionalCommitsRules,
-} from '../utils/helpers.js';
+import { handleError } from '../utils/helpers.js';
+
+/**
+ * 獲取檔案的變更內容
+ */
+function getFileDiff(filePath, isNew) {
+  try {
+    if (isNew) {
+      // 新檔案：讀取完整內容（前 100 行）
+      const content = readFileSync(filePath, 'utf-8');
+      const lines = content.split('\n').slice(0, 100);
+      return `[新檔案]\n${lines.join('\n')}${lines.length >= 100 ? '\n...' : ''}`;
+    }
+    // 已存在檔案：獲取 diff
+    const diff = execSync(`git diff HEAD -- "${filePath}"`, {
+      encoding: 'utf-8',
+    }).toString();
+    return diff || '[無變更]';
+  } catch (error) {
+    return `[讀取錯誤: ${error.message}]`;
+  }
+}
+
+/**
+ * 獲取所有未提交的變更
+ */
+function getAllChanges() {
+  try {
+    const status = execSync('git status --porcelain', {
+      encoding: 'utf-8',
+    }).toString();
+
+    if (!status.trim()) {
+      return [];
+    }
+
+    const changes = [];
+    const lines = status.split('\n').filter((line) => line.trim());
+
+    for (const line of lines) {
+      const statusCode = line.substring(0, 2);
+      const filePath = line.substring(3).trim();
+
+      // 跳過已刪除的檔案
+      if (statusCode.includes('D')) {
+        continue;
+      }
+
+      // 跳過某些不需要提交的檔案
+      if (
+        filePath.includes('node_modules/') ||
+        filePath.includes('.next/') ||
+        filePath.includes('dist/') ||
+        filePath.includes('.DS_Store')
+      ) {
+        continue;
+      }
+
+      const isNew = statusCode.includes('?') || statusCode.includes('A');
+      const isStaged = statusCode[0] !== ' ' && statusCode[0] !== '?';
+
+      changes.push({
+        filePath,
+        isNew,
+        isStaged,
+        statusCode,
+      });
+    }
+
+    return changes;
+  } catch (error) {
+    console.error('獲取變更列表失敗:', error.message);
+    return [];
+  }
+}
 
 /**
  * 使用 AI 分析並分組變更
  */
-async function analyzeAndGroupChanges(changes, config, logger) {
-  logger.startSpinner('AI 正在分析變更並分組...');
+async function analyzeAndGroupChanges(changes, config) {
+  console.log('🤖 正在使用 AI 分析變更並分組...\n');
 
   // 準備變更摘要
   const maxDiffPerFile = Math.floor(config.ai.maxDiffLength / Math.max(changes.length, 1));
   const changeSummary = changes
     .map((change, index) => {
-      const diff = GitOperations.getFileDiff(change.filePath, change.isNew);
+      const diff = getFileDiff(change.filePath, change.isNew);
       const lines = diff.split('\n');
       const truncatedDiff = lines.slice(0, Math.min(50, maxDiffPerFile / 100)).join('\n');
       return `[檔案 ${index}] ${change.filePath}\n${
@@ -36,21 +104,35 @@ async function analyzeAndGroupChanges(changes, config, logger) {
     })
     .join('\n---\n\n');
 
-  const aiClient = new AIClient(config);
+  const prompt = `你是一個資深前端工程師，熟悉 Next.js 專案的開發規範。請分析以下的檔案變更，並將它們按照功能/目的分組。
 
-  const prompt = `${getProjectTypePrompt()}
+**專案背景**：
+- Next.js 12+ (Pages Router)
+- TypeScript + JavaScript 混合
+- Tailwind CSS + Styled Components
+- Zustand (客戶端狀態) + SWR (伺服器資料獲取)
+- React Hook Form + Zod (表單處理)
+- 架构：Modified Atomic Design（UI / Page / Feature 三层）
 
-請分析以下的檔案變更，並將它們按照功能/目的分組。
+**專案目錄結構參考**：
+- pages/ → 頁面路由
+- components/Page/ → 頁面級元件
+- components/UI/ 或 components/Common/ → 共用 UI 元件
+- components/[Feature]/ → 功能模組元件
+- store/ → Zustand 狀態管理
+- api/ → API 呼叫
+- utils/ → 工具函式
+- styles/ → 全域樣式
 
-**分組規則**：
+規則：
 1. 將相關功能的變更歸類在同一組（例如：同一個功能開發、同一個 bug 修復、相關的重構等）
 2. 每組應該要有明確的主題
-3. 同一個功能的元件、API、樣式應歸為同一組
-4. 設定檔（config）和文件（docs）變更可以獨立成一組
+3. 同一個功能的元件、API、store、樣式應歸為同一組
+4. 設定檔（config）和檔案（docs）變更可以獨立成一組
 5. 輸出格式為 JSON 陣列，每個元素包含：
    - group_name: 群組名稱（簡短描述，繁體中文）
    - commit_type: commit 類型（feat/fix/docs/style/refactor/test/chore/perf）
-   - commit_scope: commit 影響範圍（如 api、ui、config、auth 等，選填）
+   - commit_scope: commit 影響範圍（如 member、report、auth、api、ui、config）
    - file_indices: 屬於這組的檔案索引陣列（對應上面的 [檔案 X]）
    - description: 這組變更的詳細說明（繁體中文）
 
@@ -77,188 +159,219 @@ ${changeSummary}
 
 請只輸出 JSON，不要其他文字。`;
 
-  const response = await aiClient.sendAndWait(prompt);
-  await aiClient.stop();
+  const response = await AIClient.sendAndWait(prompt, config.ai.model);
 
   try {
-    const groups = AIClient.parseJSON(response);
-    logger.succeedSpinner(`AI 分析完成，共分為 ${groups.length} 個群組`);
-    return groups;
+    return AIClient.parseJSON(response);
   } catch (error) {
-    logger.failSpinner('AI 分析失敗');
-    throw new Error(`無法解析 AI 回應: ${error.message}`);
+    console.error('❌ 無法解析 AI 回應:', error.message);
+    console.log('原始回應:', response);
+    return null;
   }
 }
 
 /**
- * 為特定群組生成 commit message
+ * 为特定群組生成 commit message
  */
-async function generateCommitMessage(group, files, config, logger) {
+async function generateCommitMessage(group, files, config) {
   const filesList = files
-    .map(file => {
-      const diff = GitOperations.getFileDiff(file.filePath, file.isNew);
+    .map((file) => {
+      const diff = getFileDiff(file.filePath, file.isNew);
       return `檔案: ${file.filePath}\n${diff}`;
     })
     .join('\n\n---\n\n');
 
-  const aiClient = new AIClient(config);
+  const prompt = `请根据以下资讯生成一则 commit message：
 
-  const prompt = `請根據以下資訊生成一則 commit message：
-
-群組名稱: ${group.group_name}
-Commit 類型: ${group.commit_type}
-Commit 範圍: ${group.commit_scope || '未指定'}
-說明: ${group.description}
+群組名称: ${group.group_name}
+Commit 类型: ${group.commit_type}
+Commit 范围: ${group.commit_scope || '未指定'}
+说明: ${group.description}
 
 檔案變更：
 ${filesList}
 
-規則：
+规则：
 - 使用 Conventional Commits 格式：${group.commit_type}${
     group.commit_scope ? `(${group.commit_scope})` : ''
   }: <subject>
-- subject 限制在 50 字內，使用繁體中文
+- subject 限制在 50 字内，使用繁体中文
 - 如果變更複雜，可以加上 body（用空行分隔），body 使用 bullet points
-- 只輸出 commit message 本身，不要其他說明
-- 不要包含 markdown code block 標記（不要 \`\`\`）
-- 不要加上任何引導語句
+- 只输出 commit message 本身，不要其他说明
+- 不要包含 markdown code block 标记（不要 \`\`\`）
+- 不要加上任何引导语句
 
-輸出格式範例：
+输出格式范例：
 feat(auth): 新增使用者登入功能
 
-- 實作登入 API endpoint
-- 新增登入頁面 UI
-- 整合 JWT 認證機制`;
+- 实作登入 API endpoint
+- 新增登入页面 UI
+- 整合 JWT 认证机制`;
 
-  const response = await aiClient.sendAndWait(prompt);
-  await aiClient.stop();
+  const response = await AIClient.sendAndWait(prompt, config.ai.model);
 
-  return AIClient.cleanResponse(response);
+  // 清理可能的 markdown code block 标记
+  let commitMessage = response.trim();
+  commitMessage = commitMessage
+    .replace(/^```[\s\S]*?\n/, '')
+    .replace(/\n```$/, '')
+    .trim();
+
+  return commitMessage;
 }
 
 /**
  * 執行分組提交
  */
-async function commitGroup(group, files, config, logger) {
+async function commitGroup(group, files, config) {
   try {
-    console.log(chalk.cyan(`\n📦 處理群組: ${group.group_name}`));
-    console.log(`   類型: ${group.commit_type}${group.commit_scope ? `(${group.commit_scope})` : ''}`);
-    console.log(`   檔案數量: ${files.length}`);
+    console.log(`\n📦 處理群組: ${group.group_name}`);
+    console.log(
+      `   類型: ${group.commit_type}${group.commit_scope ? `(${group.commit_scope})` : ''}`
+    );
+    console.log(`   檔案数量: ${files.length}`);
 
-    // Reset 所有已 staged 的檔案
-    GitOperations.resetStaged();
+    // 先 reset 所有已 staged 的檔案
+    try {
+      execSync('git reset HEAD -- .', { stdio: 'ignore' });
+    } catch (e) {
+      // 忽略錯誤（可能没有 staged 的檔案）
+    }
 
-    // Add 這組的檔案
+    // Add 这組的檔案
     for (const file of files) {
       console.log(`   ├─ ${file.filePath}`);
-      GitOperations.addFile(file.filePath);
+      try {
+        execSync(`git add "${file.filePath}"`, { encoding: 'utf-8' });
+      } catch (addError) {
+        console.error(`   ⚠️  無法加入檔案: ${file.filePath}`, addError.message);
+        throw addError;
+      }
     }
 
     // 生成 commit message
     console.log(`   └─ 生成 commit message...`);
-    const commitMessage = await generateCommitMessage(group, files, config, logger);
+    const commitMessage = await generateCommitMessage(group, files, config);
 
     if (!commitMessage) {
-      logger.warn('無法生成 commit message，跳過此群組');
+      console.log(`   ❌ 無法生成 commit message，跳過此群組`);
       return false;
     }
 
-    // 驗證 commit message
-    const validation = validateCommitMessage(commitMessage);
-    if (!validation.valid) {
-      logger.warn(`Commit message 無效（${validation.reason}），跳過此群組`);
-      return false;
-    }
-
-    console.log(chalk.cyan('\n   📝 Commit Message:'));
-    logger.code(commitMessage.split('\n').map(line => `   ${line}`).join('\n'));
+    console.log(`\n   📝 Commit Message:`);
+    console.log(`   ${'─'.repeat(50)}`);
+    commitMessage.split('\n').forEach((line) => {
+      console.log(`   ${line}`);
+    });
+    console.log(`   ${'─'.repeat(50)}`);
 
     // 執行 commit
-    await GitOperations.commit(commitMessage);
-    logger.success('Commit 完成！');
+    // 使用暫存檔案避免 commit message 中的特殊字元問題
+    const tmpFile = '.git/COMMIT_EDITMSG_TMP';
+    try {
+      writeFileSync(tmpFile, commitMessage, 'utf-8');
+      execSync(`git commit -F ${tmpFile}`, {
+        stdio: 'inherit',
+      });
+      unlinkSync(tmpFile);
+    } catch (commitError) {
+      try {
+        unlinkSync(tmpFile);
+      } catch (e) {
+        // 忽略刪除临时檔案的錯誤
+      }
+      throw commitError;
+    }
 
+    console.log(`   ✅ Commit 完成！`);
     return true;
   } catch (error) {
-    logger.error(`Commit 失敗: ${error.message}`);
+    console.error(`   ❌ Commit 失敗:`, error.message);
     return false;
   }
 }
 
 /**
- * Commit All 命令處理器
+ * Commit All 命令主函数
  */
-export async function commitAllCommand(options) {
-  const logger = new Logger(options.verbose);
+export async function commitAllCommand() {
+  const logger = new Logger();
 
   try {
-    logger.header('智能分析所有變更並自動提交');
-
-    // 檢查是否在 Git 倉庫中
-    if (!GitOperations.isGitRepository()) {
-      logger.error('當前目錄不是 Git 倉庫');
-      process.exit(1);
-    }
-
     // 載入配置
-    const config = await loadConfig(options);
+    const config = await loadCommitConfig();
+
+    logger.header('智慧分析所有變更並自動提交');
 
     if (config.output.verbose) {
-      logger.debug('配置已載入');
-      logger.debug(`AI Model: ${config.ai.model}`);
+      console.log('📋 使用配置：');
+      console.log(`   AI Model: ${config.ai.model}`);
+      console.log(`   Max Diff Length: ${config.ai.maxDiffLength}`);
+      console.log(`   Max Retries: ${config.ai.maxRetries}`);
+      console.log('');
     }
 
-    // 獲取所有變更
-    logger.startSpinner('掃描變更中...');
-    const changes = GitOperations.getAllChanges();
-    logger.succeedSpinner(`找到 ${changes.length} 個變更的檔案`);
+    // 1. 獲取所有變更
+    logger.step('掃描變更中...');
+    const changes = getAllChanges();
 
     if (changes.length === 0) {
       logger.info('沒有需要提交的變更');
       process.exit(0);
     }
 
-    console.log(chalk.cyan('\n📊 變更的檔案:'));
-    console.log(formatFileList(changes));
+    console.log(`📊 找到 ${changes.length} 个變更的檔案:\n`);
+    changes.forEach((change, index) => {
+      const status = change.isNew ? '新增' : '修改';
+      console.log(`   [${index}] ${status} - ${change.filePath}`);
+    });
+    console.log();
 
-    // 使用 AI 分析並分組
-    const groups = await analyzeAndGroupChanges(changes, config, logger);
+    // 2. 使用 AI 分析並分組
+    const groups = await analyzeAndGroupChanges(changes, config);
 
     if (!groups || groups.length === 0) {
       logger.error('AI 分析失敗或沒有產生分組');
       process.exit(1);
     }
 
-    console.log(chalk.cyan('\n✅ 分組結果:'));
+    logger.success(`AI 分析完成，共分為 ${groups.length} 個群組:\n`);
     groups.forEach((group, index) => {
       console.log(`   群組 ${index + 1}: ${group.group_name} (${group.commit_type})`);
-      console.log(`   └─ 包含 ${group.file_indices.length} 個檔案`);
+      console.log(`   └─ 包含 ${group.file_indices.length} 个檔案`);
     });
 
-    // 依序提交每個群組
-    logger.header('開始執行提交');
+    // 3. 依序提交每个群組
+    logger.separator('=', 60);
+    console.log('開始執行提交...');
+    logger.separator('=', 60);
 
     let successCount = 0;
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];
-      const groupFiles = group.file_indices.map(index => changes[index]);
+      const groupFiles = group.file_indices.map((index) => changes[index]);
 
-      const success = await commitGroup(group, groupFiles, config, logger);
+      const success = await commitGroup(group, groupFiles, config);
       if (success) {
         successCount++;
       }
     }
 
-    // 顯示摘要
-    logger.header(`完成！成功提交 ${successCount}/${groups.length} 個群組`);
+    // 4. 顯示摘要
+    logger.separator('=', 60);
+    logger.success(`完成！成功提交 ${successCount}/${groups.length} 个群組`);
+    logger.separator('=', 60);
 
-    // 顯示最近的 commits
-    console.log(chalk.cyan('\n📋 最近的 commits:'));
-    const recentCommits = GitOperations.getRecentCommits(successCount);
-    console.log(recentCommits);
+    // 顯示最近的几个 commits
+    console.log('\n📋 最近的 commits:');
+    execSync(`git log -${successCount} --oneline`, { stdio: 'inherit' });
 
     // Reset 任何剩餘的 staged 檔案
-    GitOperations.resetStaged();
-
+    try {
+      execSync('git reset HEAD -- .', { stdio: 'ignore' });
+    } catch (e) {
+      // 忽略
+    }
   } catch (error) {
     handleError(error);
     process.exit(1);

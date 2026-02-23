@@ -1,42 +1,28 @@
 /**
  * Commit 命令
- * 
- * 為已 staged 的變更生成 commit message 並提交
+ * 基於 scripts/ai-auto-commit.mjs
+ * 自動產生 commit message 並執行 commit
  */
 
-import chalk from 'chalk';
-import { loadConfig } from '../core/config-loader.js';
-import { AIClient } from '../core/ai-client.js';
+import { execSync } from 'child_process';
+import { loadCommitConfig } from '../core/config-loader.js';
 import { GitOperations } from '../core/git-operations.js';
+import { AIClient } from '../core/ai-client.js';
 import { Logger } from '../utils/logger.js';
-import { 
-  handleError, 
-  validateCommitMessage, 
-  truncateText,
-  getProjectTypePrompt,
-  getConventionalCommitsRules,
-} from '../utils/helpers.js';
+import { cleanCommitMessage, validateCommitMessage, handleError, getProjectTypePrompt } from '../utils/helpers.js';
 
-/**
- * Commit 命令處理器
- */
-export async function commitCommand(options) {
-  const logger = new Logger(options.verbose);
+export async function commitCommand() {
+  const logger = new Logger();
 
   try {
-    // 檢查是否在 Git 倉庫中
-    if (!GitOperations.isGitRepository()) {
-      logger.error('當前目錄不是 Git 倉庫');
-      process.exit(1);
-    }
-
     // 載入配置
-    const config = await loadConfig(options);
-    
+    const config = await loadCommitConfig();
+
     if (config.output.verbose) {
-      logger.debug('配置已載入');
-      logger.debug(`AI Model: ${config.ai.model}`);
-      logger.debug(`Max Diff Length: ${config.ai.maxDiffLength}`);
+      console.log('📋 使用配置：');
+      console.log(`   AI Model: ${config.ai.model}`);
+      console.log(`   Max Diff Length: ${config.ai.maxDiffLength}`);
+      console.log('');
     }
 
     // 檢查是否有 staged 變更
@@ -44,71 +30,107 @@ export async function commitCommand(options) {
 
     if (!diff.trim()) {
       logger.error('沒有 staged 的變更');
-      logger.info('請先使用 git add 來 stage 你的變更');
+      console.log('💡 請先使用 git add 來 stage 你的變更');
       process.exit(1);
     }
 
-    logger.startSpinner('正在分析變更內容...');
+    logger.step('正在分析變更內容...\n');
 
     // 截斷過長的 diff
-    const truncatedDiff = truncateText(diff, config.ai.maxDiffLength);
+    const truncatedDiff =
+      diff.length > config.ai.maxDiffLength
+        ? diff.substring(0, config.ai.maxDiffLength) + '\n\n... [diff 過長已截斷]'
+        : diff;
 
     if (config.output.verbose && diff.length > config.ai.maxDiffLength) {
-      logger.debug(`Diff 已從 ${diff.length} 字元截斷至 ${config.ai.maxDiffLength} 字元`);
+      logger.warning(`Diff 已從 ${diff.length} 字元截斷至 ${config.ai.maxDiffLength} 字元\n`);
     }
 
-    // 使用 AI 生成 commit message
-    const aiClient = new AIClient(config);
-    
-    logger.updateSpinner('AI 正在生成 commit message...');
+    // 使用 AI 產生 commit message
+    let commitMessage = '';
+    let lastError = null;
 
-    const prompt = `${getProjectTypePrompt()}
+    for (let attempt = 1; attempt <= config.ai.maxRetries; attempt++) {
+      try {
+        if (config.output.verbose && attempt > 1) {
+          console.log(`🔄 重試第 ${attempt}/${config.ai.maxRetries} 次...\n`);
+        }
+
+        const prompt = `${getProjectTypePrompt()}
 
 請根據以下 git diff 產生一則 commit message。
 
-${getConventionalCommitsRules()}
+**Commit Message 規則**：
+1. 使用 Conventional Commits 格式：type(scope): subject
+2. type 必須是：feat/fix/docs/style/refactor/test/chore/perf 其中之一
+3. scope: 影響範圍（如 member、report、auth、api、ui、config）
+4. subject 限制在 50 字內，使用繁體中文
+5. 如果變更複雜，加上 body 說明（使用 bullet points）
+
+**重要**：
+- 直接輸出 commit message 純文字，不要使用 markdown 程式碼區塊（\`\`\`）
+- 不要加上任何前綴說明或後綴文字
+- 第一行是標題，如有需要可加上空行後的詳細說明
 
 **範例格式**：
-feat(auth): 新增使用者登入功能
+feat(member): 新增會員管理頁面
 
-- 實作登入 API endpoint
-- 新增登入頁面 UI
-- 整合 JWT 認證機制
+- 實作會員列表查詢功能
+- 新增會員資料編輯表單
+- 整合 Zustand 狀態管理
 
 git diff:
 ${truncatedDiff}`;
 
-    const rawMessage = await aiClient.sendAndWait(prompt);
-    await aiClient.stop();
+        const response = await AIClient.sendAndWait(prompt, config.ai.model);
+        commitMessage = cleanCommitMessage(response);
 
-    const commitMessage = AIClient.cleanResponse(rawMessage);
+        // 驗證 commit message
+        const validation = validateCommitMessage(commitMessage);
+        if (!validation.valid) {
+          throw new Error(`無效的 commit message: ${validation.reason}`);
+        }
 
-    // 驗證 commit message
-    const validation = validateCommitMessage(commitMessage);
-    if (!validation.valid) {
-      logger.failSpinner('生成 commit message 失敗');
-      logger.error(validation.reason);
+        // 成功產生，跳出重試迴圈
+        break;
+      } catch (error) {
+        lastError = error;
+        if (config.output.verbose) {
+          logger.warning(`嘗試 ${attempt} 失敗: ${error.message}\n`);
+        }
+
+        if (attempt < config.ai.maxRetries) {
+          continue;
+        }
+      }
+    }
+
+    // 所有重試都失敗
+    if (!commitMessage) {
+      logger.error('無法產生有效的 commit message');
+      if (lastError && config.output.verbose) {
+        console.log(`   最後錯誤: ${lastError.message}`);
+      }
+      console.log('\n💡 建議：');
+      console.log('   1. 檢查網路連線');
+      console.log('   2. 嘗試更換 AI 模型（使用 --model 參數）');
+      console.log('   3. 確認變更內容不會太複雜或太大');
       process.exit(1);
     }
 
-    logger.succeedSpinner('Commit message 生成完成');
-
-    // 顯示生成的 commit message
-    console.log(chalk.cyan('\n📝 生成的 Commit Message:'));
-    logger.code(commitMessage);
+    logger.success('產生的 Commit Message:');
+    logger.separator('─', 60);
+    console.log(commitMessage);
+    logger.separator('─', 60);
 
     // 執行 commit
-    logger.startSpinner('正在執行 commit...');
-    await GitOperations.commit(commitMessage);
-    logger.succeedSpinner('Commit 完成！');
+    logger.step('\n正在執行 commit...');
+    execSync(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, {
+      stdio: 'inherit',
+    });
 
-    // 顯示最新的 commit
-    console.log(chalk.cyan('\n📋 最新 commit:'));
-    const recentCommits = GitOperations.getRecentCommits(1);
-    console.log(recentCommits);
-
+    logger.success('Commit 完成！\n');
   } catch (error) {
-    logger.failSpinner('操作失敗');
     handleError(error);
     process.exit(1);
   }
