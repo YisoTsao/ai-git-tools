@@ -1,123 +1,51 @@
 /**
  * Logger 工具
- * 
- * 提供格式化的日誌輸出
+ * 基於 scripts/ai-pr-modules/ui/logger.mjs
  */
 
-import chalk from 'chalk';
-import ora from 'ora';
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  red: '\x1b[31m',
+  cyan: '\x1b[36m',
+  magenta: '\x1b[35m',
+};
 
 export class Logger {
-  constructor(verbose = false) {
-    this.verbose = verbose;
-    this.spinner = null;
+  info(msg) {
+    console.log(`${colors.blue}ℹ${colors.reset} ${msg}`);
   }
 
-  /**
-   * 標題
-   */
-  header(text) {
-    console.log(chalk.cyan.bold(`\n${'='.repeat(60)}`));
-    console.log(chalk.cyan.bold(text));
-    console.log(chalk.cyan.bold('='.repeat(60)));
+  success(msg) {
+    console.log(`${colors.green}✅${colors.reset} ${msg}`);
   }
 
-  /**
-   * 成功訊息
-   */
-  success(text) {
-    console.log(chalk.green('✅ ' + text));
+  warning(msg) {
+    console.log(`${colors.yellow}⚠️${colors.reset} ${msg}`);
   }
 
-  /**
-   * 錯誤訊息
-   */
-  error(text) {
-    console.log(chalk.red('❌ ' + text));
+  error(msg) {
+    console.log(`${colors.red}❌${colors.reset} ${msg}`);
   }
 
-  /**
-   * 警告訊息
-   */
-  warn(text) {
-    console.log(chalk.yellow('⚠️  ' + text));
+  step(msg) {
+    console.log(`${colors.cyan}▶${colors.reset} ${msg}`);
   }
 
-  /**
-   * 資訊訊息
-   */
-  info(text) {
-    console.log(chalk.blue('ℹ️  ' + text));
+  header(msg) {
+    console.log(`\n${colors.bright}🤖 ${msg}${colors.reset}\n`);
   }
 
-  /**
-   * 除錯訊息（只在 verbose 模式顯示）
-   */
-  debug(text) {
-    if (this.verbose) {
-      console.log(chalk.gray('🔍 ' + text));
-    }
-  }
-
-  /**
-   * 分隔線
-   */
-  divider(char = '-', length = 50) {
+  separator(char = '═', length = 60) {
     console.log(char.repeat(length));
   }
 
-  /**
-   * 程式碼區塊
-   */
-  code(text) {
-    this.divider();
-    console.log(text);
-    this.divider();
-  }
-
-  /**
-   * 開始 spinner
-   */
-  startSpinner(text) {
-    this.spinner = ora(text).start();
-  }
-
-  /**
-   * 更新 spinner 文字
-   */
-  updateSpinner(text) {
-    if (this.spinner) {
-      this.spinner.text = text;
-    }
-  }
-
-  /**
-   * 停止 spinner（成功）
-   */
-  succeedSpinner(text) {
-    if (this.spinner) {
-      this.spinner.succeed(text);
-      this.spinner = null;
-    }
-  }
-
-  /**
-   * 停止 spinner（失敗）
-   */
-  failSpinner(text) {
-    if (this.spinner) {
-      this.spinner.fail(text);
-      this.spinner = null;
-    }
-  }
-
-  /**
-   * 顯示進度
-   */
-  progress(current, total, text = '') {
-    const percentage = Math.round((current / total) * 100);
-    const bar = '█'.repeat(Math.round(percentage / 2));
-    const empty = '░'.repeat(50 - Math.round(percentage / 2));
-    console.log(`\r${bar}${empty} ${percentage}% ${text}`);
+  section(title) {
+    console.log(`\n${'═'.repeat(60)}`);
+    console.log(`${colors.bright}${title}${colors.reset}`);
+    console.log('═'.repeat(60));
   }
 }
