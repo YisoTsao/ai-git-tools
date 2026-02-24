@@ -14,8 +14,16 @@ import { handleError } from '../utils/helpers.js';
 /**
  * 獲取檔案的變更內容
  */
-function getFileDiff(filePath, isNew) {
+function getFileDiff(filePath, isNew, isDeleted) {
   try {
+    if (isDeleted) {
+      // 刪除的檔案：顯示刪除前的內容（前 50 行）
+      const diff = execSync(`git show HEAD:"${filePath}"`, {
+        encoding: 'utf-8',
+      }).toString();
+      const lines = diff.split('\n').slice(0, 50);
+      return `[已刪除]\n${lines.join('\n')}${lines.length >= 50 ? '\n...' : ''}`;
+    }
     if (isNew) {
       // 新檔案：讀取完整內容（前 100 行）
       const content = readFileSync(filePath, 'utf-8');
@@ -52,11 +60,6 @@ function getAllChanges() {
       const statusCode = line.substring(0, 2);
       const filePath = line.substring(3).trim();
 
-      // 跳過已刪除的檔案
-      if (statusCode.includes('D')) {
-        continue;
-      }
-
       // 跳過某些不需要提交的檔案
       if (
         filePath.includes('node_modules/') ||
@@ -68,11 +71,13 @@ function getAllChanges() {
       }
 
       const isNew = statusCode.includes('?') || statusCode.includes('A');
+      const isDeleted = statusCode.includes('D');
       const isStaged = statusCode[0] !== ' ' && statusCode[0] !== '?';
 
       changes.push({
         filePath,
         isNew,
+        isDeleted,
         isStaged,
         statusCode,
       });
@@ -91,16 +96,17 @@ function getAllChanges() {
 async function analyzeAndGroupChanges(changes, config) {
   console.log('🤖 正在使用 AI 分析變更並分組...\n');
 
-  // 準備變更摘要
+  // 準備變更摘要（限制每個檔案的 diff 長度）
   const maxDiffPerFile = Math.floor(config.ai.maxDiffLength / Math.max(changes.length, 1));
   const changeSummary = changes
     .map((change, index) => {
-      const diff = getFileDiff(change.filePath, change.isNew);
+      const diff = getFileDiff(change.filePath, change.isNew, change.isDeleted);
       const lines = diff.split('\n');
       const truncatedDiff = lines.slice(0, Math.min(50, maxDiffPerFile / 100)).join('\n');
-      return `[檔案 ${index}] ${change.filePath}\n${
-        change.isNew ? '（新檔案）' : '（已修改）'
-      }\n${truncatedDiff}\n`;
+      let status = '（已修改）';
+      if (change.isNew) status = '（新檔案）';
+      if (change.isDeleted) status = '（已刪除）';
+      return `[檔案 ${index}] ${change.filePath}\n${status}\n${truncatedDiff}\n`;
     })
     .join('\n---\n\n');
 
@@ -112,7 +118,7 @@ async function analyzeAndGroupChanges(changes, config) {
 - Tailwind CSS + Styled Components
 - Zustand (客戶端狀態) + SWR (伺服器資料獲取)
 - React Hook Form + Zod (表單處理)
-- 架构：Modified Atomic Design（UI / Page / Feature 三层）
+- 架構：Modified Atomic Design（UI / Page / Feature 三層）
 
 **專案目錄結構參考**：
 - pages/ → 頁面路由
@@ -121,14 +127,14 @@ async function analyzeAndGroupChanges(changes, config) {
 - components/[Feature]/ → 功能模組元件
 - store/ → Zustand 狀態管理
 - api/ → API 呼叫
-- utils/ → 工具函式
+- utils/ → 工具函數
 - styles/ → 全域樣式
 
 規則：
 1. 將相關功能的變更歸類在同一組（例如：同一個功能開發、同一個 bug 修復、相關的重構等）
 2. 每組應該要有明確的主題
 3. 同一個功能的元件、API、store、樣式應歸為同一組
-4. 設定檔（config）和檔案（docs）變更可以獨立成一組
+4. 設定檔（config）和文件（docs）變更可以獨立成一組
 5. 輸出格式為 JSON 陣列，每個元素包含：
    - group_name: 群組名稱（簡短描述，繁體中文）
    - commit_type: commit 類型（feat/fix/docs/style/refactor/test/chore/perf）
@@ -159,7 +165,7 @@ ${changeSummary}
 
 請只輸出 JSON，不要其他文字。`;
 
-  const response = await AIClient.sendAndWait(prompt, config.ai.model);
+  const response = await AIClient.sendAndWait(prompt, config.ai.model, config.ai.maxRetries);
 
   try {
     return AIClient.parseJSON(response);
@@ -171,46 +177,49 @@ ${changeSummary}
 }
 
 /**
- * 为特定群組生成 commit message
+ * 為特定群組生成 commit message
  */
 async function generateCommitMessage(group, files, config) {
   const filesList = files
     .map((file) => {
-      const diff = getFileDiff(file.filePath, file.isNew);
-      return `檔案: ${file.filePath}\n${diff}`;
+      const diff = getFileDiff(file.filePath, file.isNew, file.isDeleted);
+      let status = '修改';
+      if (file.isNew) status = '新增';
+      if (file.isDeleted) status = '刪除';
+      return `檔案: ${file.filePath} [${status}]\n${diff}`;
     })
     .join('\n\n---\n\n');
 
-  const prompt = `请根据以下资讯生成一则 commit message：
+  const prompt = `請根據以下資訊生成一則 commit message：
 
-群組名称: ${group.group_name}
-Commit 类型: ${group.commit_type}
-Commit 范围: ${group.commit_scope || '未指定'}
-说明: ${group.description}
+群組名稱: ${group.group_name}
+Commit 類型: ${group.commit_type}
+Commit 範圍: ${group.commit_scope || '未指定'}
+說明: ${group.description}
 
 檔案變更：
 ${filesList}
 
-规则：
+規則：
 - 使用 Conventional Commits 格式：${group.commit_type}${
     group.commit_scope ? `(${group.commit_scope})` : ''
   }: <subject>
-- subject 限制在 50 字内，使用繁体中文
+- subject 限制在 50 字內，使用繁體中文
 - 如果變更複雜，可以加上 body（用空行分隔），body 使用 bullet points
-- 只输出 commit message 本身，不要其他说明
-- 不要包含 markdown code block 标记（不要 \`\`\`）
-- 不要加上任何引导语句
+- 只輸出 commit message 本身，不要其他說明
+- 不要包含 markdown code block 標記（不要 \`\`\`）
+- 不要加上任何引導語句
 
-输出格式范例：
+輸出格式範例：
 feat(auth): 新增使用者登入功能
 
-- 实作登入 API endpoint
-- 新增登入页面 UI
-- 整合 JWT 认证机制`;
+- 實作登入 API endpoint
+- 新增登入頁面 UI
+- 整合 JWT 認證機制`;
 
-  const response = await AIClient.sendAndWait(prompt, config.ai.model);
+  const response = await AIClient.sendAndWait(prompt, config.ai.model, config.ai.maxRetries);
 
-  // 清理可能的 markdown code block 标记
+  // 清理可能的 markdown code block 標記
   let commitMessage = response.trim();
   commitMessage = commitMessage
     .replace(/^```[\s\S]*?\n/, '')
@@ -229,20 +238,23 @@ async function commitGroup(group, files, config) {
     console.log(
       `   類型: ${group.commit_type}${group.commit_scope ? `(${group.commit_scope})` : ''}`
     );
-    console.log(`   檔案数量: ${files.length}`);
+    console.log(`   檔案數量: ${files.length}`);
 
     // 先 reset 所有已 staged 的檔案
     try {
       execSync('git reset HEAD -- .', { stdio: 'ignore' });
     } catch (e) {
-      // 忽略錯誤（可能没有 staged 的檔案）
+      // 忽略錯誤（可能沒有 staged 的檔案）
     }
 
-    // Add 这組的檔案
+    // Add 這組的檔案
     for (const file of files) {
-      console.log(`   ├─ ${file.filePath}`);
+      const fileStatus = file.isNew ? '新增' : file.isDeleted ? '刪除' : '修改';
+      console.log(`   ├─ [${fileStatus}] ${file.filePath}`);
       try {
-        execSync(`git add "${file.filePath}"`, { encoding: 'utf-8' });
+        // 使用 JSON.stringify 來正確處理包含空格或特殊字符的檔案路徑
+        // git add 對於刪除的檔案也能正確處理
+        execSync(`git add ${JSON.stringify(file.filePath)}`, { encoding: 'utf-8' });
       } catch (addError) {
         console.error(`   ⚠️  無法加入檔案: ${file.filePath}`, addError.message);
         throw addError;
@@ -278,7 +290,7 @@ async function commitGroup(group, files, config) {
       try {
         unlinkSync(tmpFile);
       } catch (e) {
-        // 忽略刪除临时檔案的錯誤
+        // 忽略刪除暫存檔案的錯誤
       }
       throw commitError;
     }
@@ -320,9 +332,11 @@ export async function commitAllCommand() {
       process.exit(0);
     }
 
-    console.log(`📊 找到 ${changes.length} 个變更的檔案:\n`);
+    console.log(`📊 找到 ${changes.length} 個變更的檔案:\n`);
     changes.forEach((change, index) => {
-      const status = change.isNew ? '新增' : '修改';
+      let status = '修改';
+      if (change.isNew) status = '新增';
+      if (change.isDeleted) status = '刪除';
       console.log(`   [${index}] ${status} - ${change.filePath}`);
     });
     console.log();
@@ -335,13 +349,49 @@ export async function commitAllCommand() {
       process.exit(1);
     }
 
+    // 驗證所有檔案都被包含在分組中
+    const groupedIndices = new Set();
+    groups.forEach((group) => {
+      group.file_indices.forEach((index) => {
+        groupedIndices.add(index);
+      });
+    });
+
+    const ungroupedIndices = [];
+    for (let i = 0; i < changes.length; i++) {
+      if (!groupedIndices.has(i)) {
+        ungroupedIndices.push(i);
+      }
+    }
+
+    // 如果有檔案未被分組，創建一個 "其他變更" 群組
+    if (ungroupedIndices.length > 0) {
+      console.log(`\n⚠️  發現 ${ungroupedIndices.length} 個未分組的檔案，將自動歸類：`);
+      ungroupedIndices.forEach((index) => {
+        console.log(`   - ${changes[index].filePath}`);
+      });
+
+      groups.push({
+        group_name: '其他變更',
+        commit_type: 'chore',
+        commit_scope: 'misc',
+        file_indices: ungroupedIndices,
+        description: '未能自動分類的其他變更',
+      });
+    }
+
     logger.success(`AI 分析完成，共分為 ${groups.length} 個群組:\n`);
     groups.forEach((group, index) => {
       console.log(`   群組 ${index + 1}: ${group.group_name} (${group.commit_type})`);
-      console.log(`   └─ 包含 ${group.file_indices.length} 个檔案`);
+      console.log(`   └─ 包含 ${group.file_indices.length} 個檔案`);
+      if (config.output.verbose) {
+        group.file_indices.forEach((fileIndex) => {
+          console.log(`      - [${fileIndex}] ${changes[fileIndex].filePath}`);
+        });
+      }
     });
 
-    // 3. 依序提交每个群組
+    // 3. 依序提交每個群組
     logger.separator('=', 60);
     console.log('開始執行提交...');
     logger.separator('=', 60);
@@ -351,6 +401,14 @@ export async function commitAllCommand() {
       const group = groups[i];
       const groupFiles = group.file_indices.map((index) => changes[index]);
 
+      // 驗證檔案索引是否有效
+      const invalidIndices = group.file_indices.filter((idx) => idx >= changes.length);
+      if (invalidIndices.length > 0) {
+        console.error(`\n❌ 群組 ${i + 1} 包含無效的檔案索引:`, invalidIndices);
+        console.log(`   跳過此群組: ${group.group_name}`);
+        continue;
+      }
+
       const success = await commitGroup(group, groupFiles, config);
       if (success) {
         successCount++;
@@ -359,12 +417,21 @@ export async function commitAllCommand() {
 
     // 4. 顯示摘要
     logger.separator('=', 60);
-    logger.success(`完成！成功提交 ${successCount}/${groups.length} 个群組`);
+    logger.success(`完成！成功提交 ${successCount}/${groups.length} 個群組`);
     logger.separator('=', 60);
 
-    // 顯示最近的几个 commits
-    console.log('\n📋 最近的 commits:');
-    execSync(`git log -${successCount} --oneline`, { stdio: 'inherit' });
+    if (successCount < groups.length) {
+      const failedCount = groups.length - successCount;
+      console.log(`\n⚠️  有 ${failedCount} 個群組提交失敗`);
+    }
+
+    // 顯示最近的幾個 commits
+    if (successCount > 0) {
+      console.log('\n📋 最近的 commits:');
+      execSync(`git log -${successCount} --oneline`, { stdio: 'inherit' });
+    } else {
+      console.log('\n⚠️  沒有成功的提交');
+    }
 
     // Reset 任何剩餘的 staged 檔案
     try {
@@ -372,6 +439,9 @@ export async function commitAllCommand() {
     } catch (e) {
       // 忽略
     }
+
+    // 確保程式正常退出
+    process.exit(0);
   } catch (error) {
     handleError(error);
     process.exit(1);
