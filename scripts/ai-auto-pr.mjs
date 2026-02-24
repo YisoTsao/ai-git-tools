@@ -46,6 +46,9 @@ async function main() {
     // 執行工作流程
     const workflow = new PRWorkflow(config);
     await workflow.execute();
+
+    // 確保程序正常退出
+    process.exit(0);
   } catch (error) {
     handleError(error);
     process.exit(1);

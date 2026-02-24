@@ -478,6 +478,9 @@ async function autoCommitAll() {
     } catch (e) {
       // 忽略
     }
+
+    // 確保程序正常退出
+    process.exit(0);
   } catch (error) {
     console.error('\n❌ 錯誤:', error.message);
     if (error.stack) {

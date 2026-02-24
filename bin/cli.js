@@ -34,7 +34,14 @@ program
 program
   .command('init')
   .description('初始化配置檔案 (.ai-git-config.mjs)')
-  .action(initCommand);
+  .action(async (options) => {
+    try {
+      await initCommand(options);
+      process.exit(0);
+    } catch (error) {
+      process.exit(1);
+    }
+  });
 
 // Commit 命令
 program
@@ -44,7 +51,14 @@ program
   .option('-v, --verbose', '顯示詳細輸出')
   .option('--max-diff <number>', '最大 diff 長度')
   .option('--max-retries <number>', '最大重試次數')
-  .action(commitCommand);
+  .action(async (options) => {
+    try {
+      await commitCommand(options);
+      process.exit(0);
+    } catch (error) {
+      process.exit(1);
+    }
+  });
 
 // Commit All 命令
 program
@@ -54,7 +68,14 @@ program
   .option('-v, --verbose', '顯示詳細輸出')
   .option('--max-diff <number>', '最大 diff 長度')
   .option('--max-retries <number>', '最大重試次數')
-  .action(commitAllCommand);
+  .action(async (options) => {
+    try {
+      await commitAllCommand(options);
+      process.exit(0);
+    } catch (error) {
+      process.exit(1);
+    }
+  });
 
 // PR 命令
 program
@@ -66,6 +87,13 @@ program
   .option('--no-confirm', '跳過確認直接創建')
   .option('--auto-labels', '自動添加 Labels (預設啟用)')
   .option('--include-impact', '在 PR 中包含影響範圍分析和注意事項 (預設關閉)')
-  .action(prCommand);
+  .action(async (options) => {
+    try {
+      await prCommand(options);
+      process.exit(0);
+    } catch (error) {
+      process.exit(1);
+    }
+  });
 
 program.parse();
