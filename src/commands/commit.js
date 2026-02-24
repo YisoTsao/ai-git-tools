@@ -130,6 +130,9 @@ ${truncatedDiff}`;
     });
 
     logger.success('Commit 完成！\n');
+
+    // 確保程式正常退出
+    process.exit(0);
   } catch (error) {
     handleError(error);
     process.exit(1);

@@ -59,6 +59,7 @@ export class InteractiveSelect {
       const cleanup = () => {
         process.stdin.setRawMode(false);
         process.stdin.removeAllListeners('keypress');
+        process.stdin.pause(); // 確保 stdin stream 被關閉
         process.stdout.write(cursor.show);
         console.log('');
       };
