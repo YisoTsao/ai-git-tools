@@ -11,9 +11,4 @@ build/
 # Test files
 coverage/
 *.test.js
-
-# Config files (user-specific)
-.ai-git-config.js
-.ai-git-config.mjs
-ai-git.config.js
-ai-git.config.mjs
+docs/

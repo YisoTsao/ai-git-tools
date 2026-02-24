@@ -4,83 +4,96 @@
  * AI Git Tools CLI
  * 
  * AI-powered Git automation for commit messages and PR generation
+ * 完全重寫版本基於 scripts/ 原始實現
  */
 
 import { Command } from 'commander';
-import chalk from 'chalk';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { commitCommand } from '../src/commands/commit.js';
 import { commitAllCommand } from '../src/commands/commit-all.js';
 import { prCommand } from '../src/commands/pr.js';
-import { workflowCommand } from '../src/commands/workflow.js';
 import { initCommand } from '../src/commands/init.js';
+
+// 讀取 package.json 獲取版本號
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(
+  readFileSync(join(__dirname, '../package.json'), 'utf-8')
+);
 
 const program = new Command();
 
 program
-  .name('gitai')
+  .name('ai-git-tools')
   .description('AI-powered Git automation tools')
-  .version('1.0.0');
+  .version(packageJson.version);
 
 // Init 命令
 program
   .command('init')
-  .description('初始化配置檔案')
-  .action(initCommand);
+  .description('初始化配置檔案 (.ai-git-config.mjs)')
+  .action(async (options) => {
+    try {
+      await initCommand(options);
+      process.exit(0);
+    } catch (error) {
+      process.exit(1);
+    }
+  });
 
 // Commit 命令
 program
   .command('commit')
-  .description('為已 staged 的變更生成並執行 commit')
-  .option('-m, --model <model>', '指定 AI 模型')
+  .description('AI 自動生成 commit message 並提交')
+  .option('--model <model>', '指定 AI 模型')
   .option('-v, --verbose', '顯示詳細輸出')
-  .option('--max-diff <number>', '最大 diff 長度', parseInt)
-  .option('--max-retries <number>', '最大重試次數', parseInt)
-  .action(commitCommand);
+  .option('--max-diff <number>', '最大 diff 長度')
+  .option('--max-retries <number>', '最大重試次數')
+  .action(async (options) => {
+    try {
+      await commitCommand(options);
+      process.exit(0);
+    } catch (error) {
+      process.exit(1);
+    }
+  });
 
 // Commit All 命令
 program
   .command('commit-all')
-  .alias('ca')
-  .description('智能分析所有變更並自動分組提交')
-  .option('-m, --model <model>', '指定 AI 模型')
+  .description('智慧分析所有變更並自動分組提交')
+  .option('--model <model>', '指定 AI 模型')
   .option('-v, --verbose', '顯示詳細輸出')
-  .option('--max-diff <number>', '最大 diff 長度', parseInt)
-  .option('--max-retries <number>', '最大重試次數', parseInt)
-  .action(commitAllCommand);
+  .option('--max-diff <number>', '最大 diff 長度')
+  .option('--max-retries <number>', '最大重試次數')
+  .action(async (options) => {
+    try {
+      await commitAllCommand(options);
+      process.exit(0);
+    } catch (error) {
+      process.exit(1);
+    }
+  });
 
 // PR 命令
 program
   .command('pr')
-  .description('生成 PR 並發送到 GitHub')
-  .option('-b, --base <branch>', '目標分支')
-  .option('-h, --head <branch>', '來源分支')
-  .option('-m, --model <model>', '指定 AI 模型')
-  .option('--draft', '創建草稿 PR')
-  .option('--preview', '僅預覽，不創建 PR')
+  .description('AI 自動生成 PR 並創建 Pull Request')
+  .option('--base <branch>', '指定目標分支')
+  .option('--model <model>', '指定 AI 模型')
+  .option('--preview', '僅預覽 PR 內容，不實際創建')
   .option('--no-confirm', '跳過確認直接創建')
-  .option('--auto-reviewers', '自動選擇 reviewers')
-  .option('--auto-labels', '自動添加 Labels')
-  .option('--no-labels', '不添加 Labels')
-  .option('--org <name>', 'GitHub 組織名稱')
-  .action(prCommand);
+  .option('--auto-labels', '自動添加 Labels (預設啟用)')
+  .option('--include-impact', '在 PR 中包含影響範圍分析和注意事項 (預設關閉)')
+  .action(async (options) => {
+    try {
+      await prCommand(options);
+      process.exit(0);
+    } catch (error) {
+      process.exit(1);
+    }
+  });
 
-// Workflow 命令
-program
-  .command('workflow')
-  .alias('wf')
-  .description('完整工作流程：commit-all + pr')
-  .option('-m, --model <model>', '指定 AI 模型')
-  .option('-v, --verbose', '顯示詳細輸出')
-  .option('-b, --base <branch>', 'PR 目標分支')
-  .option('--draft', '創建草稿 PR')
-  .option('--auto-reviewers', '自動選擇 reviewers')
-  .option('--auto-labels', '自動添加 Labels')
-  .action(workflowCommand);
-
-// 解析命令列參數
-program.parse(process.argv);
-
-// 如果沒有提供命令，顯示幫助
-if (!process.argv.slice(2).length) {
-  program.outputHelp();
-}
+program.parse();

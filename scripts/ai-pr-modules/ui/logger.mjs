@@ -1,19 +1,8 @@
+import { colors } from '../utils/constants.mjs';
+
 /**
- * Logger 工具
- * 基於 scripts/ai-pr-modules/ui/logger.mjs
+ * 日誌輸出工具
  */
-
-const colors = {
-  reset: '\x1b[0m',
-  bright: '\x1b[1m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  magenta: '\x1b[35m',
-};
-
 export class Logger {
   info(msg) {
     console.log(`${colors.blue}ℹ${colors.reset} ${msg}`);
@@ -39,13 +28,13 @@ export class Logger {
     console.log(`\n${colors.bright}🤖 ${msg}${colors.reset}\n`);
   }
 
-  separator(char = '═', length = 60) {
+  separator(char = '═', length = 80) {
     console.log(char.repeat(length));
   }
 
   section(title) {
-    console.log(`\n${'═'.repeat(60)}`);
+    console.log(`\n${'═'.repeat(80)}`);
     console.log(`${colors.bright}${title}${colors.reset}`);
-    console.log('═'.repeat(60));
+    console.log('═'.repeat(80));
   }
 }

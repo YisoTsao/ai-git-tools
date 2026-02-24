@@ -17,14 +17,13 @@ export default {
 
   // GitHub 設定（用於 PR 工具）
   github: {
-    orgName: null, // GitHub 組織名稱（自動從 git remote 取得）
-    defaultBase: 'auto', // 預設目標分支：'auto' | 'main' | 'develop' | 'master'
+    defaultBase: 'release-1.0.0', // 預設目標分支：'release' | 'auto' | 'main' | 'develop' | 'master'
     autoLabels: true, // 自動添加 Labels
   },
 
   // Reviewer 設定（用於 PR 工具）
   reviewers: {
-    autoSelect: false, // 是否啟用 reviewer 選擇功能（true: 啟用互動選擇 | false: 跳過選擇）
+    interactiveReviewers: true, // 是否啟用 reviewer 選擇功能（true: 啟用互動選擇 | false: 跳過選擇）
     maxSuggested: 5, // 最多建議的 reviewers 數量（基於 Git 歷史分析）
     gitHistoryDepth: 20, // Git 歷史分析深度（查看最近 N 筆 commit）
     excludeAuthors: [], // 排除特定作者（email 或 username），例如: ['bot@', 'ci-user']

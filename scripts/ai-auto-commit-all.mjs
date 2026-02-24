@@ -1,19 +1,28 @@
-/**
- * Commit All 命令
- * 基於 scripts/ai-auto-commit-all.mjs
- * 智慧分析所有變更並自動分類提交
- */
-
+/* eslint-disable no-continue */
+/* eslint-disable no-plusplus */
+/* eslint-disable no-await-in-loop */
+/* eslint-disable no-restricted-syntax */
+import { CopilotClient } from '@github/copilot-sdk';
 import { execSync } from 'child_process';
-import { readFileSync, writeFileSync, unlinkSync } from 'fs';
-import { loadCommitConfig } from '../core/config-loader.js';
-import { AIClient } from '../core/ai-client.js';
-import { Logger } from '../utils/logger.js';
-import { handleError } from '../utils/helpers.js';
+import { readFileSync } from 'fs';
+import { loadCommitConfig } from './commit-modules/config-loader.mjs';
+
+/**
+ * 智能分析所有變更並自動分類提交
+ * 會將相關功能的變更歸類到同一個 commit
+ * 用法：node scripts/ai-auto-commit-all.mjs [選項]
+ *
+ * 選項：
+ *   --model <model>          指定 AI 模型 (預設: 從配置檔讀取或 gpt-4.1)
+ *   --verbose, -v            顯示詳細輸出
+ *   --max-diff <number>      最大 diff 長度 (預設: 8000)
+ *   --help, -h               顯示幫助訊息
+ */
 
 /**
  * 獲取檔案的變更內容
  */
+
 function getFileDiff(filePath, isNew, isDeleted) {
   try {
     if (isDeleted) {
@@ -45,6 +54,7 @@ function getFileDiff(filePath, isNew, isDeleted) {
  */
 function getAllChanges() {
   try {
+    // 獲取已修改和新增的檔案
     const status = execSync('git status --porcelain', {
       encoding: 'utf-8',
     }).toString();
@@ -110,7 +120,13 @@ async function analyzeAndGroupChanges(changes, config) {
     })
     .join('\n---\n\n');
 
-  const prompt = `你是一個資深前端工程師，熟悉 Next.js 專案的開發規範。請分析以下的檔案變更，並將它們按照功能/目的分組。
+  const client = new CopilotClient();
+  const session = await client.createSession({
+    model: config.ai.model,
+  });
+
+  const response = await session.sendAndWait({
+    prompt: `你是一個資深前端工程師，熟悉 Next.js 專案的開發規範。請分析以下的檔案變更，並將它們按照功能/目的分組。
 
 **專案背景**：
 - Next.js 12+ (Pages Router)
@@ -163,15 +179,22 @@ async function analyzeAndGroupChanges(changes, config) {
 檔案變更內容：
 ${changeSummary}
 
-請只輸出 JSON，不要其他文字。`;
+請只輸出 JSON，不要其他文字。`,
+  });
 
-  const response = await AIClient.sendAndWait(prompt, config.ai.model, config.ai.maxRetries);
+  await client.stop();
 
+  const content = response?.data.content?.trim() || '';
+
+  // 嘗試解析 JSON
   try {
-    return AIClient.parseJSON(response);
+    // 移除可能的 markdown code block 標記
+    const jsonContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+    const groups = JSON.parse(jsonContent);
+    return groups;
   } catch (error) {
     console.error('❌ 無法解析 AI 回應:', error.message);
-    console.log('原始回應:', response);
+    console.log('原始回應:', content);
     return null;
   }
 }
@@ -180,6 +203,11 @@ ${changeSummary}
  * 為特定群組生成 commit message
  */
 async function generateCommitMessage(group, files, config) {
+  const client = new CopilotClient();
+  const session = await client.createSession({
+    model: config.ai.model,
+  });
+
   const filesList = files
     .map((file) => {
       const diff = getFileDiff(file.filePath, file.isNew, file.isDeleted);
@@ -190,7 +218,8 @@ async function generateCommitMessage(group, files, config) {
     })
     .join('\n\n---\n\n');
 
-  const prompt = `請根據以下資訊生成一則 commit message：
+  const response = await session.sendAndWait({
+    prompt: `請根據以下資訊生成一則 commit message：
 
 群組名稱: ${group.group_name}
 Commit 類型: ${group.commit_type}
@@ -202,8 +231,8 @@ ${filesList}
 
 規則：
 - 使用 Conventional Commits 格式：${group.commit_type}${
-    group.commit_scope ? `(${group.commit_scope})` : ''
-  }: <subject>
+      group.commit_scope ? `(${group.commit_scope})` : ''
+    }: <subject>
 - subject 限制在 50 字內，使用繁體中文
 - 如果變更複雜，可以加上 body（用空行分隔），body 使用 bullet points
 - 只輸出 commit message 本身，不要其他說明
@@ -215,12 +244,13 @@ feat(auth): 新增使用者登入功能
 
 - 實作登入 API endpoint
 - 新增登入頁面 UI
-- 整合 JWT 認證機制`;
+- 整合 JWT 認證機制`,
+  });
 
-  const response = await AIClient.sendAndWait(prompt, config.ai.model, config.ai.maxRetries);
+  await client.stop();
 
   // 清理可能的 markdown code block 標記
-  let commitMessage = response.trim();
+  let commitMessage = response?.data.content?.trim() || '';
   commitMessage = commitMessage
     .replace(/^```[\s\S]*?\n/, '')
     .replace(/\n```$/, '')
@@ -281,7 +311,8 @@ async function commitGroup(group, files, config) {
       console.log(`   ${'─'.repeat(50)}`);
 
       // 執行 commit
-      // 使用暫存檔案避免 commit message 中的特殊字元問題
+      // 使用臨時檔案避免 commit message 中的特殊字符問題
+      const { writeFileSync, unlinkSync } = await import('fs');
       const tmpFile = '.git/COMMIT_EDITMSG_TMP';
       try {
         writeFileSync(tmpFile, commitMessage, 'utf-8');
@@ -293,7 +324,7 @@ async function commitGroup(group, files, config) {
         try {
           unlinkSync(tmpFile);
         } catch (e) {
-          // 忽略刪除暫存檔案的錯誤
+          // 忽略刪除臨時檔案的錯誤
         }
         throw commitError;
       }
@@ -319,16 +350,14 @@ async function commitGroup(group, files, config) {
 }
 
 /**
- * Commit All 命令主函数
+ * 主函數
  */
-export async function commitAllCommand() {
-  const logger = new Logger();
-
+async function autoCommitAll() {
   try {
     // 載入配置
     const config = await loadCommitConfig();
 
-    logger.header('智慧分析所有變更並自動提交');
+    console.log('🚀 智能分析所有變更並自動提交\n');
 
     if (config.output.verbose) {
       console.log('📋 使用配置：');
@@ -339,12 +368,12 @@ export async function commitAllCommand() {
     }
 
     // 1. 獲取所有變更
-    logger.step('掃描變更中...');
+    console.log('📋 掃描變更中...');
     const changes = getAllChanges();
 
     if (changes.length === 0) {
-      logger.info('沒有需要提交的變更');
-      return;
+      console.log('✨ 沒有需要提交的變更');
+      process.exit(0);
     }
 
     console.log(`📊 找到 ${changes.length} 個變更的檔案:\n`);
@@ -360,8 +389,8 @@ export async function commitAllCommand() {
     const groups = await analyzeAndGroupChanges(changes, config);
 
     if (!groups || groups.length === 0) {
-      logger.error('AI 分析失敗或沒有產生分組');
-      throw new Error('AI 分析失敗或沒有產生分組');
+      console.log('❌ AI 分析失敗或沒有產生分組');
+      process.exit(1);
     }
 
     // 驗證所有檔案都被包含在分組中
@@ -395,21 +424,16 @@ export async function commitAllCommand() {
       });
     }
 
-    logger.success(`AI 分析完成，共分為 ${groups.length} 個群組:\n`);
+    console.log(`\n✅ AI 分析完成，共分為 ${groups.length} 個群組:\n`);
     groups.forEach((group, index) => {
       console.log(`   群組 ${index + 1}: ${group.group_name} (${group.commit_type})`);
       console.log(`   └─ 包含 ${group.file_indices.length} 個檔案`);
-      if (config.output.verbose) {
-        group.file_indices.forEach((fileIndex) => {
-          console.log(`      - [${fileIndex}] ${changes[fileIndex].filePath}`);
-        });
-      }
     });
 
     // 3. 依序提交每個群組
-    logger.separator('=', 60);
+    console.log(`\n${'='.repeat(60)}`);
     console.log('開始執行提交...');
-    logger.separator('=', 60);
+    console.log('='.repeat(60));
 
     let successCount = 0;
     for (let i = 0; i < groups.length; i++) {
@@ -431,9 +455,9 @@ export async function commitAllCommand() {
     }
 
     // 4. 顯示摘要
-    logger.separator('=', 60);
-    logger.success(`完成！成功提交 ${successCount}/${groups.length} 個群組`);
-    logger.separator('=', 60);
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`✅ 完成！成功提交 ${successCount}/${groups.length} 個群組`);
+    console.log('='.repeat(60));
 
     if (successCount < groups.length) {
       const failedCount = groups.length - successCount;
@@ -454,8 +478,16 @@ export async function commitAllCommand() {
     } catch (e) {
       // 忽略
     }
+
+    // 確保程序正常退出
+    process.exit(0);
   } catch (error) {
-    handleError(error);
-    throw error;
+    console.error('\n❌ 錯誤:', error.message);
+    if (error.stack) {
+      console.error(error.stack);
+    }
+    process.exit(1);
   }
 }
+
+autoCommitAll();

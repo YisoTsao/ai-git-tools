@@ -1,11 +1,12 @@
 /**
- * Git 操作工具
- * 
- * 封裝常用的 Git 命令操作
+ * Git 操作封裝
+ * 基於 scripts/ai-pr-modules/core/git-operations.mjs
  */
 
 import { execSync } from 'child_process';
-import { readFileSync, existsSync } from 'fs';
+
+const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
+const DIFF_CONTEXT_LINES = 50;
 
 export class GitOperations {
   /**
@@ -13,11 +14,13 @@ export class GitOperations {
    */
   static exec(command, options = {}) {
     try {
-      return execSync(command, {
+      const result = execSync(command, {
         encoding: 'utf-8',
         stdio: options.silent ? 'pipe' : 'inherit',
+        maxBuffer: MAX_BUFFER_SIZE,
         ...options,
-      }).toString();
+      });
+      return result ? result.toString().trim() : '';
     } catch (error) {
       if (options.throwOnError !== false) {
         throw error;
@@ -39,225 +42,165 @@ export class GitOperations {
   }
 
   /**
-   * 獲取當前分支名稱
+   * 獲取目前分支
    */
   static getCurrentBranch() {
-    return GitOperations.exec('git branch --show-current', { silent: true }).trim();
+    return GitOperations.exec('git rev-parse --abbrev-ref HEAD', { silent: true });
   }
 
   /**
-   * 獲取遠端 URL
-   */
-  static getRemoteUrl(remoteName = 'origin') {
-    return GitOperations.exec(`git remote get-url ${remoteName}`, { 
-      silent: true,
-      throwOnError: false,
-    }).trim();
-  }
-
-  /**
-   * 從遠端 URL 解析組織和倉庫名稱
-   */
-  static parseRemoteUrl(url) {
-    const match = url.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
-    if (match) {
-      return {
-        org: match[1],
-        repo: match[2],
-      };
-    }
-    return { org: null, repo: null };
-  }
-
-  /**
-   * 獲取 staged 變更的 diff
+   * 獲取 staged diff
    */
   static getStagedDiff() {
     return GitOperations.exec('git diff --staged', { silent: true });
   }
 
   /**
-   * 獲取所有未提交的變更
+   * 偵測可用的 release 分支
    */
-  static getAllChanges() {
-    const status = GitOperations.exec('git status --porcelain', { silent: true });
-    
-    if (!status.trim()) {
+  static detectReleaseBranches() {
+    try {
+      execSync('git fetch origin', { stdio: 'ignore' });
+      const branches = execSync('git branch -r', { encoding: 'utf-8' })
+        .toString()
+        .split('\n')
+        .map((b) => b.trim())
+        .filter((b) => b.startsWith('origin/release-'))
+        .map((b) => b.replace('origin/', ''));
+      return branches;
+    } catch (error) {
       return [];
     }
-
-    const changes = [];
-    const lines = status.split('\n').filter(line => line.trim());
-
-    for (const line of lines) {
-      const statusCode = line.substring(0, 2);
-      const filePath = line.substring(3).trim();
-
-      // 跳過已刪除的檔案
-      if (statusCode.includes('D')) {
-        continue;
-      }
-
-      // 跳過不需要的檔案
-      if (
-        filePath.includes('node_modules/') ||
-        filePath.includes('.next/') ||
-        filePath.includes('dist/') ||
-        filePath.includes('build/') ||
-        filePath.includes('.DS_Store')
-      ) {
-        continue;
-      }
-
-      const isNew = statusCode.includes('?') || statusCode.includes('A');
-      const isStaged = statusCode[0] !== ' ' && statusCode[0] !== '?';
-
-      changes.push({
-        filePath,
-        isNew,
-        isStaged,
-        statusCode,
-      });
-    }
-
-    return changes;
   }
 
   /**
-   * 獲取檔案的變更內容
+   * 找到最新的 release 分支
    */
-  static getFileDiff(filePath, isNew = false) {
+  static findLatestReleaseBranch() {
+    const branches = GitOperations.detectReleaseBranches();
+    if (branches.length === 0) return null;
+
+    const monthlyBranches = branches.filter((b) => b.includes('-m'));
+    const weeklyBranches = branches.filter((b) => b.includes('-w'));
+    const priorityBranches = monthlyBranches.length > 0 ? monthlyBranches : weeklyBranches;
+
+    priorityBranches.sort().reverse();
+    return priorityBranches[0];
+  }
+
+  /**
+   * 獲取變更的檔案列表
+   */
+  static getChangedFiles(baseBranch, headBranch) {
     try {
-      if (isNew) {
-        // 新檔案：讀取完整內容（前 100 行）
-        if (!existsSync(filePath)) {
-          return '[檔案不存在]';
-        }
-        const content = readFileSync(filePath, 'utf-8');
-        const lines = content.split('\n').slice(0, 100);
-        return `[新檔案]\n${lines.join('\n')}${lines.length >= 100 ? '\n...' : ''}`;
-      }
-      
-      // 已存在檔案：獲取 diff
-      const diff = GitOperations.exec(`git diff HEAD -- "${filePath}"`, { 
-        silent: true,
-        throwOnError: false,
-      });
-      return diff || '[無變更]';
+      const files = execSync(`git diff --name-only origin/${baseBranch}...${headBranch}`, {
+        encoding: 'utf-8',
+      })
+        .split('\n')
+        .filter(Boolean);
+      return files;
     } catch (error) {
-      return `[讀取錯誤: ${error.message}]`;
+      return [];
     }
   }
 
   /**
-   * Add 檔案
+   * 獲取 commit 列表
    */
-  static addFile(filePath) {
-    GitOperations.exec(`git add "${filePath}"`);
-  }
-
-  /**
-   * Add 多個檔案
-   */
-  static addFiles(filePaths) {
-    for (const filePath of filePaths) {
-      GitOperations.addFile(filePath);
-    }
-  }
-
-  /**
-   * Reset staged 檔案
-   */
-  static resetStaged() {
+  static getCommits(baseBranch, headBranch) {
     try {
-      GitOperations.exec('git reset HEAD -- .', { silent: true, throwOnError: false });
-    } catch {
-      // 忽略錯誤
-    }
-  }
-
-  /**
-   * 執行 commit
-   */
-  static async commit(message) {
-    // 使用臨時檔案避免 commit message 中的特殊字符問題
-    const { writeFileSync, unlinkSync } = await import('fs');
-    const tmpFile = '.git/COMMIT_EDITMSG_TMP';
-    
-    try {
-      writeFileSync(tmpFile, message, 'utf-8');
-      GitOperations.exec(`git commit -F ${tmpFile}`);
-      unlinkSync(tmpFile);
+      return execSync(`git log origin/${baseBranch}..origin/${headBranch} --oneline`, {
+        encoding: 'utf-8',
+      });
     } catch (error) {
+      throw new Error(`無法比較分支差異: ${error.message}`);
+    }
+  }
+
+  /**
+   * 獲取 diff
+   */
+  static getDiff(baseBranch, headBranch) {
+    try {
+      return execSync(`git diff origin/${baseBranch}...${headBranch}`, {
+        encoding: 'utf-8',
+        maxBuffer: MAX_BUFFER_SIZE,
+      });
+    } catch (error) {
+      // 嘗試替代方案
       try {
-        unlinkSync(tmpFile);
-      } catch {
-        // 忽略刪除臨時檔案的錯誤
+        return execSync(`git diff origin/${baseBranch}..${headBranch}`, {
+          encoding: 'utf-8',
+          maxBuffer: MAX_BUFFER_SIZE,
+        });
+      } catch (fallbackError) {
+        throw new Error(`無法獲取分支差異: ${error.message}`);
       }
-      throw error;
     }
   }
 
   /**
-   * 獲取最近的 commits
+   * 智能截斷 diff
+   * 保留前後各 50 行，中間用省略標記
    */
-  static getRecentCommits(count = 5) {
-    return GitOperations.exec(`git log -${count} --oneline`, { silent: true });
+  static truncateDiff(diff, maxLength = 8000) {
+    if (diff.length <= maxLength) return diff;
+
+    const lines = diff.split('\n');
+    const contextLines = DIFF_CONTEXT_LINES;
+
+    if (lines.length <= contextLines * 2) {
+      return diff;
+    }
+
+    const header = lines.slice(0, contextLines).join('\n');
+    const footer = lines.slice(-contextLines).join('\n');
+    const omittedLines = lines.length - contextLines * 2;
+
+    return `${header}\n\n... [已省略 ${omittedLines} 行變更] ...\n\n${footer}`;
   }
 
   /**
-   * 獲取兩個分支之間的 diff
+   * 推送到遠端
    */
-  static getDiffBetweenBranches(base, head) {
-    return GitOperations.exec(`git diff ${base}...${head}`, { silent: true });
-  }
-
-  /**
-   * 獲取兩個分支之間的 commit 列表
-   */
-  static getCommitsBetweenBranches(base, head) {
-    const output = GitOperations.exec(`git log ${base}..${head} --oneline`, { silent: true });
-    return output.split('\n').filter(line => line.trim());
-  }
-
-  /**
-   * 檢查分支是否存在
-   */
-  static branchExists(branchName) {
+  static push(branch) {
     try {
-      GitOperations.exec(`git rev-parse --verify ${branchName}`, { 
-        silent: true,
-        throwOnError: true,
-      });
+      execSync(`git push -u origin ${branch}`, { stdio: 'inherit' });
       return true;
-    } catch {
+    } catch (error) {
+      throw new Error(`推送失敗: ${error.message}`);
+    }
+  }
+
+  /**
+   * 同步遠端資訊
+   */
+  static fetch() {
+    try {
+      execSync('git fetch origin', { stdio: 'ignore' });
+      return true;
+    } catch (error) {
       return false;
     }
   }
 
   /**
-   * 獲取檔案的 Git 歷史貢獻者
+   * 獲取變更統計
    */
-  static getFileContributors(filePath, depth = 20) {
+  static getChangeStats(baseBranch, headBranch) {
     try {
-      const output = GitOperations.exec(
-        `git log -${depth} --pretty=format:"%ae|%an" -- "${filePath}"`,
-        { silent: true, throwOnError: false }
-      );
-      
-      const contributors = new Map();
-      const lines = output.split('\n').filter(line => line.trim());
-      
-      for (const line of lines) {
-        const [email, name] = line.split('|');
-        if (email && name) {
-          contributors.set(email, name);
-        }
-      }
-      
-      return Array.from(contributors.entries()).map(([email, name]) => ({ email, name }));
-    } catch {
-      return [];
+      const stats = execSync(`git diff --shortstat origin/${baseBranch}...${headBranch}`, {
+        encoding: 'utf-8',
+      }).trim();
+
+      const filesChanged = execSync(
+        `git diff --name-only origin/${baseBranch}...${headBranch} | wc -l`,
+        { encoding: 'utf-8' }
+      ).trim();
+
+      return { stats, filesChanged: parseInt(filesChanged, 10) };
+    } catch (error) {
+      return { stats: '無法獲取統計', filesChanged: 0 };
     }
   }
 }
