@@ -31,7 +31,7 @@ export async function commitCommand() {
     if (!diff.trim()) {
       logger.error('沒有 staged 的變更');
       console.log('💡 請先使用 git add 來 stage 你的變更');
-      process.exit(1);
+      throw new Error('沒有 staged 的變更');
     }
 
     logger.step('正在分析變更內容...\n');
@@ -115,7 +115,7 @@ ${truncatedDiff}`;
       console.log('   1. 檢查網路連線');
       console.log('   2. 嘗試更換 AI 模型（使用 --model 參數）');
       console.log('   3. 確認變更內容不會太複雜或太大');
-      process.exit(1);
+      throw new Error('無法產生有效的 commit message');
     }
 
     logger.success('產生的 Commit Message:');
@@ -130,11 +130,8 @@ ${truncatedDiff}`;
     });
 
     logger.success('Commit 完成！\n');
-
-    // 確保程式正常退出
-    process.exit(0);
   } catch (error) {
     handleError(error);
-    process.exit(1);
+    throw error;
   }
 }

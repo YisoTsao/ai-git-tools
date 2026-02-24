@@ -247,56 +247,71 @@ async function commitGroup(group, files, config) {
       // 忽略錯誤（可能沒有 staged 的檔案）
     }
 
-    // Add 這組的檔案
-    for (const file of files) {
-      const fileStatus = file.isNew ? '新增' : file.isDeleted ? '刪除' : '修改';
-      console.log(`   ├─ [${fileStatus}] ${file.filePath}`);
-      try {
-        // 使用 JSON.stringify 來正確處理包含空格或特殊字符的檔案路徑
-        // git add 對於刪除的檔案也能正確處理
-        execSync(`git add ${JSON.stringify(file.filePath)}`, { encoding: 'utf-8' });
-      } catch (addError) {
-        console.error(`   ⚠️  無法加入檔案: ${file.filePath}`, addError.message);
-        throw addError;
-      }
-    }
-
-    // 生成 commit message
-    console.log(`   └─ 生成 commit message...`);
-    const commitMessage = await generateCommitMessage(group, files, config);
-
-    if (!commitMessage) {
-      console.log(`   ❌ 無法生成 commit message，跳過此群組`);
-      return false;
-    }
-
-    console.log(`\n   📝 Commit Message:`);
-    console.log(`   ${'─'.repeat(50)}`);
-    commitMessage.split('\n').forEach((line) => {
-      console.log(`   ${line}`);
-    });
-    console.log(`   ${'─'.repeat(50)}`);
-
-    // 執行 commit
-    // 使用暫存檔案避免 commit message 中的特殊字元問題
-    const tmpFile = '.git/COMMIT_EDITMSG_TMP';
+    // Add 這組的檔案（使用 try-finally 確保失敗時清理）
+    const addedFiles = [];
     try {
-      writeFileSync(tmpFile, commitMessage, 'utf-8');
-      execSync(`git commit -F ${tmpFile}`, {
-        stdio: 'inherit',
-      });
-      unlinkSync(tmpFile);
-    } catch (commitError) {
-      try {
-        unlinkSync(tmpFile);
-      } catch (e) {
-        // 忽略刪除暫存檔案的錯誤
+      for (const file of files) {
+        const fileStatus = file.isNew ? '新增' : file.isDeleted ? '刪除' : '修改';
+        console.log(`   ├─ [${fileStatus}] ${file.filePath}`);
+        try {
+          // 使用 JSON.stringify 來正確處理包含空格或特殊字符的檔案路徑
+          // git add 對於刪除的檔案也能正確處理
+          execSync(`git add ${JSON.stringify(file.filePath)}`, { encoding: 'utf-8' });
+          addedFiles.push(file.filePath);
+        } catch (addError) {
+          console.error(`   ⚠️  無法加入檔案: ${file.filePath}`, addError.message);
+          throw addError;
+        }
       }
-      throw commitError;
-    }
 
-    console.log(`   ✅ Commit 完成！`);
-    return true;
+      // 生成 commit message
+      console.log(`   └─ 生成 commit message...`);
+      const commitMessage = await generateCommitMessage(group, files, config);
+
+      if (!commitMessage) {
+        console.log(`   ❌ 無法生成 commit message，跳過此群組`);
+        return false;
+      }
+
+      console.log(`\n   📝 Commit Message:`);
+      console.log(`   ${'─'.repeat(50)}`);
+      commitMessage.split('\n').forEach((line) => {
+        console.log(`   ${line}`);
+      });
+      console.log(`   ${'─'.repeat(50)}`);
+
+      // 執行 commit
+      // 使用暫存檔案避免 commit message 中的特殊字元問題
+      const tmpFile = '.git/COMMIT_EDITMSG_TMP';
+      try {
+        writeFileSync(tmpFile, commitMessage, 'utf-8');
+        execSync(`git commit -F ${tmpFile}`, {
+          stdio: 'inherit',
+        });
+        unlinkSync(tmpFile);
+      } catch (commitError) {
+        try {
+          unlinkSync(tmpFile);
+        } catch (e) {
+          // 忽略刪除暫存檔案的錯誤
+        }
+        throw commitError;
+      }
+
+      console.log(`   ✅ Commit 完成！`);
+      return true;
+    } catch (error) {
+      // 如果失敗，unstage 所有已經 add 的檔案
+      if (addedFiles.length > 0) {
+        console.log(`   🔄 清理已 staged 的檔案...`);
+        try {
+          execSync('git reset HEAD -- .', { stdio: 'ignore' });
+        } catch (e) {
+          // 忽略 reset 錯誤
+        }
+      }
+      throw error;
+    }
   } catch (error) {
     console.error(`   ❌ Commit 失敗:`, error.message);
     return false;
@@ -329,7 +344,7 @@ export async function commitAllCommand() {
 
     if (changes.length === 0) {
       logger.info('沒有需要提交的變更');
-      process.exit(0);
+      return;
     }
 
     console.log(`📊 找到 ${changes.length} 個變更的檔案:\n`);
@@ -346,7 +361,7 @@ export async function commitAllCommand() {
 
     if (!groups || groups.length === 0) {
       logger.error('AI 分析失敗或沒有產生分組');
-      process.exit(1);
+      throw new Error('AI 分析失敗或沒有產生分組');
     }
 
     // 驗證所有檔案都被包含在分組中
@@ -439,11 +454,8 @@ export async function commitAllCommand() {
     } catch (e) {
       // 忽略
     }
-
-    // 確保程式正常退出
-    process.exit(0);
   } catch (error) {
     handleError(error);
-    process.exit(1);
+    throw error;
   }
 }

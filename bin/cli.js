@@ -4,21 +4,31 @@
  * AI Git Tools CLI
  * 
  * AI-powered Git automation for commit messages and PR generation
- * 完全重写版本基於 scripts/ 原始实现
+ * 完全重寫版本基於 scripts/ 原始實現
  */
 
 import { Command } from 'commander';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { commitCommand } from '../src/commands/commit.js';
 import { commitAllCommand } from '../src/commands/commit-all.js';
 import { prCommand } from '../src/commands/pr.js';
 import { initCommand } from '../src/commands/init.js';
+
+// 讀取 package.json 獲取版本號
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(
+  readFileSync(join(__dirname, '../package.json'), 'utf-8')
+);
 
 const program = new Command();
 
 program
   .name('ai-git-tools')
   .description('AI-powered Git automation tools')
-  .version('2.0.0');
+  .version(packageJson.version);
 
 // Init 命令
 program
