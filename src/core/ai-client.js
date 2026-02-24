@@ -10,14 +10,13 @@ export class AIClient {
    * 發送 prompt 並等待回應（帶重試機制）
    */
   static async sendAndWait(prompt, model = 'gpt-4.1', maxRetries = 3) {
-    const client = new CopilotClient();
     let lastError = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const client = new CopilotClient();
       try {
         const session = await client.createSession({ model });
         const response = await session.sendAndWait({ prompt });
-        await client.stop();
 
         const content = response?.data?.content || '';
         return content.trim();
@@ -26,7 +25,13 @@ export class AIClient {
         if (attempt < maxRetries) {
           console.log(`⚠️  AI 請求失敗，重試第 ${attempt}/${maxRetries} 次...`);
           await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
-          continue;
+        }
+      } finally {
+        // 確保每次都關閉 client，無論成功或失敗
+        try {
+          await client.stop();
+        } catch (e) {
+          // 忽略關閉錯誤
         }
       }
     }

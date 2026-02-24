@@ -32,16 +32,18 @@ export class AIAnalyzer {
       const response = await session.sendAndWait({ prompt });
       const prContent = response?.data.content?.trim() || '';
 
-      await client.stop();
-
       if (!prContent) {
         throw new Error('AI 未能生成 PR 內容');
       }
 
       return this.parsePRContent(prContent);
-    } catch (error) {
-      await client.stop();
-      throw error;
+    } finally {
+      // 確保 client 一定會被關閉
+      try {
+        await client.stop();
+      } catch (e) {
+        // 忽略關閉錯誤
+      }
     }
   }
 
@@ -58,8 +60,6 @@ export class AIAnalyzer {
       log.info('  正在使用 AI 深度分析程式碼變更...');
       const response = await session.sendAndWait({ prompt });
       const content = response?.data.content?.trim() || '';
-
-      await client.stop();
 
       // 解析 JSON
       try {
@@ -85,9 +85,15 @@ export class AIAnalyzer {
         return this.getFallbackAnalysis(changedFiles);
       }
     } catch (error) {
-      await client.stop();
       log.warning(`  AI 分析失敗 (${error.message})，使用基礎分析...\n`);
       return this.getFallbackAnalysis(changedFiles);
+    } finally {
+      // 確保 client 一定會被關閉
+      try {
+        await client.stop();
+      } catch (e) {
+        // 忽略關閉錯誤
+      }
     }
   }
 
