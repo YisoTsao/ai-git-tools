@@ -7,16 +7,23 @@ import { CopilotClient } from '@github/copilot-sdk';
 
 export class AIClient {
   /**
-   * 發送 prompt 並等待回應（帶重試機制）
+   * 發送 prompt 並等待回應（帶重試機制和超時保護）
    */
-  static async sendAndWait(prompt, model = 'gpt-4.1', maxRetries = 3) {
+  static async sendAndWait(prompt, model = 'gpt-4.1', maxRetries = 3, timeout = 60000) {
     let lastError = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const client = new CopilotClient();
       try {
         const session = await client.createSession({ model });
-        const response = await session.sendAndWait({ prompt });
+        
+        // 使用 Promise.race 實現超時控制
+        const responsePromise = session.sendAndWait({ prompt });
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(`AI 請求超時 (${timeout}ms)`)), timeout);
+        });
+
+        const response = await Promise.race([responsePromise, timeoutPromise]);
 
         const content = response?.data?.content || '';
         return content.trim();
