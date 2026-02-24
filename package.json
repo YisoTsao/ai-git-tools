@@ -1,6 +1,6 @@
 {
   "name": "ai-git-tools",
-  "version": "2.0.29",
+  "version": "2.0.31",
   "description": "AI-powered Git automation tools for commit messages and PR generation",
   "main": "src/index.js",
   "type": "module",
