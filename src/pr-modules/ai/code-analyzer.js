@@ -29,7 +29,13 @@ export class AIAnalyzer {
     const { client, session } = await this.createClient();
 
     try {
-      const response = await session.sendAndWait({ prompt });
+      // 使用超時保護 (60 秒)
+      const responsePromise = session.sendAndWait({ prompt });
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('AI 請求超時 (60 秒)')), 60000);
+      });
+
+      const response = await Promise.race([responsePromise, timeoutPromise]);
       const prContent = response?.data.content?.trim() || '';
 
       if (!prContent) {
@@ -58,7 +64,14 @@ export class AIAnalyzer {
 
     try {
       log.info('  正在使用 AI 深度分析程式碼變更...');
-      const response = await session.sendAndWait({ prompt });
+      
+      // 使用超時保護 (60 秒)
+      const responsePromise = session.sendAndWait({ prompt });
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('AI 請求超時 (60 秒)')), 60000);
+      });
+
+      const response = await Promise.race([responsePromise, timeoutPromise]);
       const content = response?.data.content?.trim() || '';
 
       // 解析 JSON

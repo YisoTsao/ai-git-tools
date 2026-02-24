@@ -1,4 +1,5 @@
 import { createInterface } from 'readline';
+import { execSync } from 'child_process';
 import { GitOperations } from './git-operations.mjs';
 import { GitHubAPI } from './github-api.mjs';
 import { AIAnalyzer } from '../ai/code-analyzer.mjs';
@@ -202,12 +203,35 @@ export class PRWorkflow {
     await this.git.fetch();
     log.success('同步完成\n');
 
-    // 檢查本地 commit 差異
+    // 顯示分支狀態診斷信息
+    if (this.config.output?.verbose) {
+      console.log(`${colors.cyan}🔍 分支診斷信息:${colors.reset}`);
+      try {
+        const currentBranch = this.git.getCurrentBranch();
+        console.log(`  當前分支: ${currentBranch}`);
+        console.log(`  Base 分支: origin/${baseBranch}`);
+        console.log(`  Head 分支: ${headBranch} (本地)`);
+        
+        // 檢查遠端分支是否存在
+        try {
+          execSync(`git rev-parse --verify origin/${headBranch}`, { stdio: 'pipe' });
+          console.log(`  遠端 ${headBranch}: ✓ 存在`);
+        } catch (e) {
+          console.log(`  遠端 ${headBranch}: ✗ 不存在（尚未推送）`);
+        }
+      } catch (e) {
+        // 忽略診斷錯誤
+      }
+      console.log('');
+    }
+
+    // 檢查本地 commit 差異（使用本地 headBranch）
     let localCommits;
     try {
       localCommits = this.git.getCommits(baseBranch, headBranch, {
         oneline: true,
         noDecorate: true,
+        useRemoteHead: false, // 使用本地分支以檢測未推送的commit
       });
     } catch (error) {
       throw new PRError(
@@ -261,10 +285,11 @@ export class PRWorkflow {
    * 收集變更資料
    */
   collectChangeData(baseBranch, headBranch) {
-    const stats = this.git.getChangeStats(baseBranch, headBranch);
-    const changedFiles = this.git.getChangedFiles(baseBranch, headBranch);
-    const commits = this.git.getCommits(baseBranch, headBranch);
-    const diff = this.git.getDiff(baseBranch, headBranch);
+    // 此時已經推送完成，使用本地分支即可（本地和遠端應該已同步）
+    const stats = this.git.getChangeStats(baseBranch, headBranch, false);
+    const changedFiles = this.git.getChangedFiles(baseBranch, headBranch, false);
+    const commits = this.git.getCommits(baseBranch, headBranch, { useRemoteHead: false });
+    const diff = this.git.getDiff(baseBranch, headBranch, false);
     const truncatedDiff = this.git.truncateDiff(diff);
 
     console.log(`📈 變更統計: ${stats.stats}`);

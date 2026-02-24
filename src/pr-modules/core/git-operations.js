@@ -49,14 +49,16 @@ export class GitOperations {
   /**
    * 獲取變更統計
    */
-  getChangeStats(baseBranch, headBranch) {
+  getChangeStats(baseBranch, headBranch, useRemoteHead = false) {
     try {
-      const stats = execSync(`git diff --shortstat origin/${baseBranch}...${headBranch}`, {
+      // 使用本地 headBranch 以確保能檢測到未推送的變更
+      const headRef = useRemoteHead ? `origin/${headBranch}` : headBranch;
+      const stats = execSync(`git diff --shortstat origin/${baseBranch}...${headRef}`, {
         encoding: 'utf-8',
       }).trim();
 
       const filesChanged = execSync(
-        `git diff --name-only origin/${baseBranch}...${headBranch} | wc -l`,
+        `git diff --name-only origin/${baseBranch}...${headRef} | wc -l`,
         { encoding: 'utf-8' }
       ).trim();
 
@@ -69,9 +71,11 @@ export class GitOperations {
   /**
    * 獲取變更的檔案列表
    */
-  getChangedFiles(baseBranch, headBranch) {
+  getChangedFiles(baseBranch, headBranch, useRemoteHead = false) {
     try {
-      const files = execSync(`git diff --name-only origin/${baseBranch}...${headBranch}`, {
+      // 使用本地 headBranch 以確保能檢測到未推送的變更
+      const headRef = useRemoteHead ? `origin/${headBranch}` : headBranch;
+      const files = execSync(`git diff --name-only origin/${baseBranch}...${headRef}`, {
         encoding: 'utf-8',
       })
         .split('\n')
@@ -86,9 +90,11 @@ export class GitOperations {
    * 獲取 commit 列表
    */
   getCommits(baseBranch, headBranch, options = {}) {
-    const { oneline = true, noDecorate = true } = options;
+    const { oneline = true, noDecorate = true, useRemoteHead = false } = options;
     try {
-      let cmd = `git log origin/${baseBranch}..origin/${headBranch}`;
+      // 使用本地 headBranch 以確保能檢測到未推送的 commit
+      const headRef = useRemoteHead ? `origin/${headBranch}` : headBranch;
+      let cmd = `git log origin/${baseBranch}..${headRef}`;
       if (oneline) cmd += ' --oneline';
       if (noDecorate) cmd += ' --no-decorate';
 
@@ -98,7 +104,7 @@ export class GitOperations {
         '無法比較分支差異',
         'GIT_COMPARE_FAILED',
         ['檢查遠端分支是否存在: git branch -r', '執行診斷: npm run diagnose:pr'],
-        `git log origin/${baseBranch}..origin/${headBranch}`
+        `git log origin/${baseBranch}..${headBranch}`
       );
     }
   }
@@ -106,15 +112,18 @@ export class GitOperations {
   /**
    * 獲取 diff
    */
-  getDiff(baseBranch, headBranch, maxBuffer = CONSTANTS.MAX_BUFFER_SIZE) {
+  getDiff(baseBranch, headBranch, useRemoteHead = false, maxBuffer = CONSTANTS.MAX_BUFFER_SIZE) {
     try {
-      return execSync(`git diff origin/${baseBranch}...${headBranch}`, {
+      // 使用本地 headBranch 以確保能檢測到未推送的變更
+      const headRef = useRemoteHead ? `origin/${headBranch}` : headBranch;
+      return execSync(`git diff origin/${baseBranch}...${headRef}`, {
         encoding: 'utf-8',
         maxBuffer,
       });
     } catch (error) {
       // 嘗試替代方案
-      return execSync(`git diff origin/${baseBranch}..${headBranch}`, {
+      const headRef = useRemoteHead ? `origin/${headBranch}` : headBranch;
+      return execSync(`git diff origin/${baseBranch}..${headRef}`, {
         encoding: 'utf-8',
         maxBuffer,
       });

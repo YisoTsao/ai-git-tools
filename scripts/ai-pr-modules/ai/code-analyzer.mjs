@@ -29,19 +29,27 @@ export class AIAnalyzer {
     const { client, session } = await this.createClient();
 
     try {
-      const response = await session.sendAndWait({ prompt });
-      const prContent = response?.data.content?.trim() || '';
+      // 使用超時保護 (60 秒)
+      const responsePromise = session.sendAndWait({ prompt });
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('AI 請求超時 (60 秒)')), 60000);
+      });
 
-      await client.stop();
+      const response = await Promise.race([responsePromise, timeoutPromise]);
+      const prContent = response?.data.content?.trim() || '';
 
       if (!prContent) {
         throw new Error('AI 未能生成 PR 內容');
       }
 
       return this.parsePRContent(prContent);
-    } catch (error) {
-      await client.stop();
-      throw error;
+    } finally {
+      // 確保 client 一定會被關閉
+      try {
+        await client.stop();
+      } catch (e) {
+        // 忽略關閉錯誤
+      }
     }
   }
 
@@ -56,10 +64,15 @@ export class AIAnalyzer {
 
     try {
       log.info('  正在使用 AI 深度分析程式碼變更...');
-      const response = await session.sendAndWait({ prompt });
-      const content = response?.data.content?.trim() || '';
+      
+      // 使用超時保護 (60 秒)
+      const responsePromise = session.sendAndWait({ prompt });
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('AI 請求超時 (60 秒)')), 60000);
+      });
 
-      await client.stop();
+      const response = await Promise.race([responsePromise, timeoutPromise]);
+      const content = response?.data.content?.trim() || '';
 
       // 解析 JSON
       try {
@@ -85,9 +98,15 @@ export class AIAnalyzer {
         return this.getFallbackAnalysis(changedFiles);
       }
     } catch (error) {
-      await client.stop();
       log.warning(`  AI 分析失敗 (${error.message})，使用基礎分析...\n`);
       return this.getFallbackAnalysis(changedFiles);
+    } finally {
+      // 確保 client 一定會被關閉
+      try {
+        await client.stop();
+      } catch (e) {
+        // 忽略關閉錯誤
+      }
     }
   }
 
