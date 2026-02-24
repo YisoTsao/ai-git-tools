@@ -23,8 +23,16 @@ import { loadCommitConfig } from './commit-modules/config-loader.mjs';
  * 獲取檔案的變更內容
  */
 
-function getFileDiff(filePath, isNew) {
+function getFileDiff(filePath, isNew, isDeleted) {
   try {
+    if (isDeleted) {
+      // 刪除的檔案：顯示刪除前的內容（前 50 行）
+      const diff = execSync(`git show HEAD:"${filePath}"`, {
+        encoding: 'utf-8',
+      }).toString();
+      const lines = diff.split('\n').slice(0, 50);
+      return `[已刪除]\n${lines.join('\n')}${lines.length >= 50 ? '\n...' : ''}`;
+    }
     if (isNew) {
       // 新檔案：讀取完整內容（前 100 行）
       const content = readFileSync(filePath, 'utf-8');
@@ -62,11 +70,6 @@ function getAllChanges() {
       const statusCode = line.substring(0, 2);
       const filePath = line.substring(3).trim();
 
-      // 跳過已刪除的檔案
-      if (statusCode.includes('D')) {
-        continue;
-      }
-
       // 跳過某些不需要提交的檔案
       if (
         filePath.includes('node_modules/') ||
@@ -78,11 +81,13 @@ function getAllChanges() {
       }
 
       const isNew = statusCode.includes('?') || statusCode.includes('A');
+      const isDeleted = statusCode.includes('D');
       const isStaged = statusCode[0] !== ' ' && statusCode[0] !== '?';
 
       changes.push({
         filePath,
         isNew,
+        isDeleted,
         isStaged,
         statusCode,
       });
@@ -105,12 +110,13 @@ async function analyzeAndGroupChanges(changes, config) {
   const maxDiffPerFile = Math.floor(config.ai.maxDiffLength / Math.max(changes.length, 1));
   const changeSummary = changes
     .map((change, index) => {
-      const diff = getFileDiff(change.filePath, change.isNew);
+      const diff = getFileDiff(change.filePath, change.isNew, change.isDeleted);
       const lines = diff.split('\n');
       const truncatedDiff = lines.slice(0, Math.min(50, maxDiffPerFile / 100)).join('\n');
-      return `[檔案 ${index}] ${change.filePath}\n${
-        change.isNew ? '（新檔案）' : '（已修改）'
-      }\n${truncatedDiff}\n`;
+      let status = '（已修改）';
+      if (change.isNew) status = '（新檔案）';
+      if (change.isDeleted) status = '（已刪除）';
+      return `[檔案 ${index}] ${change.filePath}\n${status}\n${truncatedDiff}\n`;
     })
     .join('\n---\n\n');
 
@@ -204,8 +210,11 @@ async function generateCommitMessage(group, files, config) {
 
   const filesList = files
     .map((file) => {
-      const diff = getFileDiff(file.filePath, file.isNew);
-      return `檔案: ${file.filePath}\n${diff}`;
+      const diff = getFileDiff(file.filePath, file.isNew, file.isDeleted);
+      let status = '修改';
+      if (file.isNew) status = '新增';
+      if (file.isDeleted) status = '刪除';
+      return `檔案: ${file.filePath} [${status}]\n${diff}`;
     })
     .join('\n\n---\n\n');
 
@@ -268,55 +277,72 @@ async function commitGroup(group, files, config) {
       // 忽略錯誤（可能沒有 staged 的檔案）
     }
 
-    // Add 這組的檔案
-    for (const file of files) {
-      console.log(`   ├─ ${file.filePath}`);
-      try {
-        // 使用陣列方式傳遞參數，避免 shell 解析問題
-        execSync(`git add ${JSON.stringify(file.filePath)}`, { encoding: 'utf-8' });
-      } catch (addError) {
-        console.error(`   ⚠️  無法加入檔案: ${file.filePath}`, addError.message);
-        throw addError;
-      }
-    }
-
-    // 生成 commit message
-    console.log(`   └─ 生成 commit message...`);
-    const commitMessage = await generateCommitMessage(group, files, config);
-
-    if (!commitMessage) {
-      console.log(`   ❌ 無法生成 commit message，跳過此群組`);
-      return false;
-    }
-
-    console.log(`\n   📝 Commit Message:`);
-    console.log(`   ${'─'.repeat(50)}`);
-    commitMessage.split('\n').forEach((line) => {
-      console.log(`   ${line}`);
-    });
-    console.log(`   ${'─'.repeat(50)}`);
-
-    // 執行 commit
-    // 使用臨時檔案避免 commit message 中的特殊字符問題
-    const { writeFileSync, unlinkSync } = await import('fs');
-    const tmpFile = '.git/COMMIT_EDITMSG_TMP';
+    // Add 這組的檔案（使用 try-finally 確保失敗時清理）
+    const addedFiles = [];
     try {
-      writeFileSync(tmpFile, commitMessage, 'utf-8');
-      execSync(`git commit -F ${tmpFile}`, {
-        stdio: 'inherit',
-      });
-      unlinkSync(tmpFile);
-    } catch (commitError) {
-      try {
-        unlinkSync(tmpFile);
-      } catch (e) {
-        // 忽略刪除臨時檔案的錯誤
+      for (const file of files) {
+        const fileStatus = file.isNew ? '新增' : file.isDeleted ? '刪除' : '修改';
+        console.log(`   ├─ [${fileStatus}] ${file.filePath}`);
+        try {
+          // 使用 JSON.stringify 來正確處理包含空格或特殊字符的檔案路徑
+          // git add 對於刪除的檔案也能正確處理
+          execSync(`git add ${JSON.stringify(file.filePath)}`, { encoding: 'utf-8' });
+          addedFiles.push(file.filePath);
+        } catch (addError) {
+          console.error(`   ⚠️  無法加入檔案: ${file.filePath}`, addError.message);
+          throw addError;
+        }
       }
-      throw commitError;
-    }
 
-    console.log(`   ✅ Commit 完成！`);
-    return true;
+      // 生成 commit message
+      console.log(`   └─ 生成 commit message...`);
+      const commitMessage = await generateCommitMessage(group, files, config);
+
+      if (!commitMessage) {
+        console.log(`   ❌ 無法生成 commit message，跳過此群組`);
+        return false;
+      }
+
+      console.log(`\n   📝 Commit Message:`);
+      console.log(`   ${'─'.repeat(50)}`);
+      commitMessage.split('\n').forEach((line) => {
+        console.log(`   ${line}`);
+      });
+      console.log(`   ${'─'.repeat(50)}`);
+
+      // 執行 commit
+      // 使用臨時檔案避免 commit message 中的特殊字符問題
+      const { writeFileSync, unlinkSync } = await import('fs');
+      const tmpFile = '.git/COMMIT_EDITMSG_TMP';
+      try {
+        writeFileSync(tmpFile, commitMessage, 'utf-8');
+        execSync(`git commit -F ${tmpFile}`, {
+          stdio: 'inherit',
+        });
+        unlinkSync(tmpFile);
+      } catch (commitError) {
+        try {
+          unlinkSync(tmpFile);
+        } catch (e) {
+          // 忽略刪除臨時檔案的錯誤
+        }
+        throw commitError;
+      }
+
+      console.log(`   ✅ Commit 完成！`);
+      return true;
+    } catch (error) {
+      // 如果失敗，unstage 所有已經 add 的檔案
+      if (addedFiles.length > 0) {
+        console.log(`   🔄 清理已 staged 的檔案...`);
+        try {
+          execSync('git reset HEAD -- .', { stdio: 'ignore' });
+        } catch (e) {
+          // 忽略 reset 錯誤
+        }
+      }
+      throw error;
+    }
   } catch (error) {
     console.error(`   ❌ Commit 失敗:`, error.message);
     return false;
@@ -352,7 +378,9 @@ async function autoCommitAll() {
 
     console.log(`📊 找到 ${changes.length} 個變更的檔案:\n`);
     changes.forEach((change, index) => {
-      const status = change.isNew ? '新增' : '修改';
+      let status = '修改';
+      if (change.isNew) status = '新增';
+      if (change.isDeleted) status = '刪除';
       console.log(`   [${index}] ${status} - ${change.filePath}`);
     });
     console.log();
@@ -363,6 +391,37 @@ async function autoCommitAll() {
     if (!groups || groups.length === 0) {
       console.log('❌ AI 分析失敗或沒有產生分組');
       process.exit(1);
+    }
+
+    // 驗證所有檔案都被包含在分組中
+    const groupedIndices = new Set();
+    groups.forEach((group) => {
+      group.file_indices.forEach((index) => {
+        groupedIndices.add(index);
+      });
+    });
+
+    const ungroupedIndices = [];
+    for (let i = 0; i < changes.length; i++) {
+      if (!groupedIndices.has(i)) {
+        ungroupedIndices.push(i);
+      }
+    }
+
+    // 如果有檔案未被分組，創建一個 "其他變更" 群組
+    if (ungroupedIndices.length > 0) {
+      console.log(`\n⚠️  發現 ${ungroupedIndices.length} 個未分組的檔案，將自動歸類：`);
+      ungroupedIndices.forEach((index) => {
+        console.log(`   - ${changes[index].filePath}`);
+      });
+
+      groups.push({
+        group_name: '其他變更',
+        commit_type: 'chore',
+        commit_scope: 'misc',
+        file_indices: ungroupedIndices,
+        description: '未能自動分類的其他變更',
+      });
     }
 
     console.log(`\n✅ AI 分析完成，共分為 ${groups.length} 個群組:\n`);
@@ -381,6 +440,14 @@ async function autoCommitAll() {
       const group = groups[i];
       const groupFiles = group.file_indices.map((index) => changes[index]);
 
+      // 驗證檔案索引是否有效
+      const invalidIndices = group.file_indices.filter((idx) => idx >= changes.length);
+      if (invalidIndices.length > 0) {
+        console.error(`\n❌ 群組 ${i + 1} 包含無效的檔案索引:`, invalidIndices);
+        console.log(`   跳過此群組: ${group.group_name}`);
+        continue;
+      }
+
       const success = await commitGroup(group, groupFiles, config);
       if (success) {
         successCount++;
@@ -392,9 +459,18 @@ async function autoCommitAll() {
     console.log(`✅ 完成！成功提交 ${successCount}/${groups.length} 個群組`);
     console.log('='.repeat(60));
 
+    if (successCount < groups.length) {
+      const failedCount = groups.length - successCount;
+      console.log(`\n⚠️  有 ${failedCount} 個群組提交失敗`);
+    }
+
     // 顯示最近的幾個 commits
-    console.log('\n📋 最近的 commits:');
-    execSync(`git log -${successCount} --oneline`, { stdio: 'inherit' });
+    if (successCount > 0) {
+      console.log('\n📋 最近的 commits:');
+      execSync(`git log -${successCount} --oneline`, { stdio: 'inherit' });
+    } else {
+      console.log('\n⚠️  沒有成功的提交');
+    }
 
     // Reset 任何剩餘的 staged 檔案
     try {
@@ -404,7 +480,9 @@ async function autoCommitAll() {
     }
   } catch (error) {
     console.error('\n❌ 錯誤:', error.message);
-    console.error(error.stack);
+    if (error.stack) {
+      console.error(error.stack);
+    }
     process.exit(1);
   }
 }

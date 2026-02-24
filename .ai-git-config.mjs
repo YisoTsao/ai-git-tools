@@ -17,8 +17,7 @@ export default {
 
   // GitHub 設定（用於 PR 工具）
   github: {
-    orgName: '', // GitHub 組織名稱（留空則自動從 git remote 取得，或使用 'kingsinfo-project'）
-    defaultBase: 'release', // 預設目標分支：'release' | 'auto' | 'main' | 'develop' | 'master'
+    defaultBase: 'release-1.0.0', // 預設目標分支：'release' | 'auto' | 'main' | 'develop' | 'master'
     autoLabels: true, // 自動添加 Labels
   },
 
