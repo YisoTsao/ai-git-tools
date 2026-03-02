@@ -63,20 +63,10 @@ export class GitHubAPI {
    */
   checkAuth() {
     try {
-      const authStatus = execSync('gh auth status 2>&1', {
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-
-      return {
-        authenticated: authStatus.includes('Logged in'),
-        details: authStatus,
-      };
+      execSync('gh api user --jq .login', { stdio: 'pipe' });
+      return { authenticated: true };
     } catch (error) {
-      return {
-        authenticated: false,
-        details: error.message,
-      };
+      return { authenticated: false };
     }
   }
 

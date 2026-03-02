@@ -5,16 +5,42 @@
  * 確保功能與 scripts 版本完全相同
  */
 
+import { execSync } from 'child_process';
 import { PRWorkflow } from '../pr-modules/core/workflow.js';
 import { loadConfig } from '../pr-modules/core/config-loader.js';
 import { handleError } from '../pr-modules/utils/helpers.js';
 import { Logger } from '../pr-modules/ui/logger.js';
+import { colors } from '../pr-modules/utils/constants.js';
+
+/**
+ * 檢查 gh CLI 是否已登入且 token 有效，未登入則印出提示並回傳 false
+ */
+function checkGHAuth(logger) {
+  try {
+    execSync('gh api user --jq .login', { stdio: 'pipe' });
+    return true;
+  } catch (_) {
+    logger.error('GitHub CLI 未登入或 token 已失效，無法執行 PR 相關操作');
+    console.log('');
+    console.log('請先執行認證：');
+    console.log(`  ${colors.green}gh auth login${colors.reset}`);
+    console.log('');
+    console.log('登入時請確保選取以下範圍：');
+    console.log('  - repo（必需）');
+    console.log('  - read:org（如需 reviewer 功能）');
+    console.log('');
+    return false;
+  }
+}
 
 /**
  * PR 命令主函數（完全照抄 scripts/ai-auto-pr.mjs）
  */
 export async function prCommand() {
   const logger = new Logger();
+
+  // ── 第一步：確認 gh CLI 已登入 ──────────────────────────
+  if (!checkGHAuth(logger)) return;
 
   try {
     logger.header('AI Auto PR Generator (v2.0 Enhanced)');

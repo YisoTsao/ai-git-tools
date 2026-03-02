@@ -32,6 +32,15 @@ export class PRWorkflow {
    * 執行完整工作流程
    */
   async execute() {
+    // 0. 確認 gh CLI 已登入（預覽模式可跳過）
+    if (!this.config.preview) {
+      const auth = this.github.checkAuth();
+      if (!auth.authenticated) {
+        log.error('GitHub CLI 未登入，請先執行: gh auth login');
+        throw new Error('GitHub CLI 未登入');
+      }
+    }
+
     // 1. 驗證環境和分支
     const { baseBranch, headBranch } = await this.detectAndValidateBranches();
 

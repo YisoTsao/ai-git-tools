@@ -11,9 +11,13 @@ export class GitOperations {
    */
   detectReleaseBranches() {
     try {
-      execSync('git fetch origin', { stdio: 'ignore' });
-      const branches = execSync('git branch -r')
-        .toString()
+      // 嘗試同步遠端，失敗就用本機已知的遠端資訊
+      try {
+        execSync('git fetch origin', { stdio: 'ignore', timeout: 15000 });
+      } catch (_) {
+        // fetch 失敗，繼續使用已經 cache 的遠端分支
+      }
+      const branches = execSync('git branch -r', { encoding: 'utf-8' })
         .split('\n')
         .map((b) => b.trim())
         .filter((b) => b.startsWith('origin/release-'))
@@ -31,12 +35,18 @@ export class GitOperations {
     const branches = this.detectReleaseBranches();
     if (branches.length === 0) return null;
 
+    // 優先選月分支(-m)，其次週分支(-w)，最後 fallback 到全部 release 分支
     const monthlyBranches = branches.filter((b) => b.includes('-m'));
     const weeklyBranches = branches.filter((b) => b.includes('-w'));
-    const priorityBranches = monthlyBranches.length > 0 ? monthlyBranches : weeklyBranches;
+    const priorityBranches =
+      monthlyBranches.length > 0
+        ? monthlyBranches
+        : weeklyBranches.length > 0
+          ? weeklyBranches
+          : branches;
 
     priorityBranches.sort().reverse();
-    return priorityBranches[0];
+    return priorityBranches[0] || null;
   }
 
   /**
@@ -135,9 +145,32 @@ export class GitOperations {
    */
   async push(branch) {
     try {
-      execSync(`git push -u origin ${branch}`, { stdio: 'inherit' });
+      execSync(`git push -u origin ${branch}`, {
+        stdio: ['ignore', 'inherit', 'pipe'],
+        encoding: 'utf-8',
+      });
       return true;
     } catch (error) {
+      const errMsg = (error.stderr || error.message || '').toString();
+      const is403 =
+        errMsg.includes('403') ||
+        errMsg.includes('Write access') ||
+        errMsg.includes('write access');
+      if (is403) {
+        throw new PRError(
+          '推送失敗：git 沒有寫入權限',
+          'GIT_PUSH_FORBIDDEN',
+          [
+            '建議執行以下指令讓 git 使用 gh 的認證:',
+            '  gh auth setup-git',
+            '或者改用 SSH 權限:',
+            '  git remote set-url origin git@github.com:<org>/<repo>.git',
+          ],
+          `git push -u origin ${branch}`
+        );
+      }
+      // 將原始錯誤輸出到 terminal
+      if (errMsg) process.stderr.write(errMsg);
       throw new PRError(
         '推送失敗',
         'GIT_PUSH_FAILED',
