@@ -12,3 +12,4 @@ build/
 coverage/
 *.test.js
 docs/
+ai-auto-dev/node_modules/
