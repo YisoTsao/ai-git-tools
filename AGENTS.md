@@ -16,3 +16,8 @@ Use `@/openspec/AGENTS.md` to learn:
 Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
+
+## 必要規則（每次回應均須遵守）
+
+### 語言
+- 所有回應、程式碼註解、Commit 訊息 → **繁體中文（台灣正體）**
