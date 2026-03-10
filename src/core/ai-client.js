@@ -3,7 +3,7 @@
  * 基於 @github/copilot-sdk
  */
 
-import { CopilotClient } from '@github/copilot-sdk';
+import { CopilotClient, approveAll } from '@github/copilot-sdk';
 
 export class AIClient {
   /**
@@ -15,7 +15,10 @@ export class AIClient {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const client = new CopilotClient();
       try {
-        const session = await client.createSession({ model });
+        const session = await client.createSession({ 
+          model,
+          onPermissionRequest: approveAll
+        });
         
         // 使用 Promise.race 實現超時控制
         const responsePromise = session.sendAndWait({ prompt });
