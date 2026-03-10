@@ -87,6 +87,7 @@ program
   .option('--no-confirm', '跳過確認直接創建')
   .option('--auto-labels', '自動添加 Labels (預設啟用)')
   .option('--include-impact', '在 PR 中包含影響範圍分析和注意事項 (預設關閉)')
+  .option('--force-new', '強制創建新 PR，不更新現有 PR')
   .action(async (options) => {
     try {
       await prCommand(options);
