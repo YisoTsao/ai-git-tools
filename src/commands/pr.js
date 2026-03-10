@@ -36,7 +36,7 @@ function checkGHAuth(logger) {
 /**
  * PR 命令主函數（完全照抄 scripts/ai-auto-pr.mjs）
  */
-export async function prCommand() {
+export async function prCommand(options = {}) {
   const logger = new Logger();
 
   // ── 第一步：確認 gh CLI 已登入 ──────────────────────────
@@ -46,12 +46,18 @@ export async function prCommand() {
     logger.header('AI Auto PR Generator (v2.0 Enhanced)');
 
     // 載入配置（使用 scripts/ 的配置載入邏輯）
+    
     const config = await loadConfig();
 
     if (config.output.verbose) {
       console.log('📋 使用配置：');
       console.log(`   AI Model: ${config.ai.model}`);
       console.log(`   Max Diff Length: ${config.ai.maxDiffLength}`);
+    }
+
+    // 將命令行選項合併到配置中
+    if (options.forceNew) {
+      config.forceNew = true;
     }
 
     // 執行工作流程（使用 scripts/ 的完整工作流）
