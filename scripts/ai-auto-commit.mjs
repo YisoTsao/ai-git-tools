@@ -1,4 +1,4 @@
-import { CopilotClient } from '@github/copilot-sdk';
+import { CopilotClient, approveAll } from '@github/copilot-sdk';
 import { execSync } from 'child_process';
 import { loadCommitConfig } from './commit-modules/config-loader.mjs';
 
@@ -95,6 +95,7 @@ async function autoCommit() {
 
         const session = await client.createSession({
           model: config.ai.model,
+          onPermissionRequest: approveAll,
         });
 
         const response = await session.sendAndWait({

@@ -193,20 +193,22 @@ export class GitHubAPI {
    * 創建或更新 PR
    */
   async createOrUpdatePR(params) {
-    const { title, body, baseBranch, headBranch, reviewers } = params;
+    const { title, body, baseBranch, headBranch, reviewers, forceNew } = params;
     const bodyFile = '/tmp/pr-body.md';
     writeFileSync(bodyFile, body);
 
     try {
-      // 檢查 PR 是否已存在
+      // 檢查 PR 是否已存在（除非強制創建新 PR）
       let existingPRUrl = null;
-      try {
-        existingPRUrl = execSync(
-          `gh pr list --head "${headBranch}" --base "${baseBranch}" --json url --jq '.[0].url'`,
-          { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
-        ).trim();
-      } catch (error) {
-        // PR 不存在
+      if (!forceNew) {
+        try {
+          existingPRUrl = execSync(
+            `gh pr list --head "${headBranch}" --base "${baseBranch}" --json url --jq '.[0].url'`,
+            { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+          ).trim();
+        } catch (error) {
+          // PR 不存在
+        }
       }
 
       const escapedTitle = title.replace(/"/g, '\\"');

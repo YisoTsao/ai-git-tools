@@ -422,6 +422,7 @@ export class PRWorkflow {
       headBranch,
       reviewers,
       config: this.config,
+      forceNew: this.config.forceNew,
     });
   }
 

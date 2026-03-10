@@ -1,4 +1,4 @@
-import { CopilotClient } from '@github/copilot-sdk';
+import { CopilotClient, approveAll } from '@github/copilot-sdk';
 import { CONSTANTS, PROJECT_SKILLS_CONTEXT } from '../utils/constants.js';
 import { getSkillsSummaryForPrompt, log } from '../utils/helpers.js';
 
@@ -15,7 +15,10 @@ export class AIAnalyzer {
    */
   async createClient() {
     const client = new CopilotClient();
-    const session = await client.createSession({ model: this.model });
+    const session = await client.createSession({ 
+      model: this.model,
+      onPermissionRequest: approveAll 
+    });
     return { client, session };
   }
 

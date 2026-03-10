@@ -2,7 +2,7 @@
 /* eslint-disable no-plusplus */
 /* eslint-disable no-await-in-loop */
 /* eslint-disable no-restricted-syntax */
-import { CopilotClient } from '@github/copilot-sdk';
+import { CopilotClient, approveAll } from '@github/copilot-sdk';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { loadCommitConfig } from './commit-modules/config-loader.mjs';
@@ -64,7 +64,7 @@ function getAllChanges() {
     }
 
     const changes = [];
-    const lines = status.split('\n').filter((line) => line.trim());
+    const lines = status.split('\n').filter(line => line.trim());
 
     for (const line of lines) {
       const statusCode = line.substring(0, 2);
@@ -121,8 +121,10 @@ async function analyzeAndGroupChanges(changes, config) {
     .join('\n---\n\n');
 
   const client = new CopilotClient();
+
   const session = await client.createSession({
     model: config.ai.model,
+    onPermissionRequest: approveAll,
   });
 
   const response = await session.sendAndWait({
@@ -206,10 +208,11 @@ async function generateCommitMessage(group, files, config) {
   const client = new CopilotClient();
   const session = await client.createSession({
     model: config.ai.model,
+    onPermissionRequest: approveAll,
   });
 
   const filesList = files
-    .map((file) => {
+    .map(file => {
       const diff = getFileDiff(file.filePath, file.isNew, file.isDeleted);
       let status = '修改';
       if (file.isNew) status = '新增';
@@ -305,7 +308,7 @@ async function commitGroup(group, files, config) {
 
       console.log(`\n   📝 Commit Message:`);
       console.log(`   ${'─'.repeat(50)}`);
-      commitMessage.split('\n').forEach((line) => {
+      commitMessage.split('\n').forEach(line => {
         console.log(`   ${line}`);
       });
       console.log(`   ${'─'.repeat(50)}`);
@@ -395,8 +398,8 @@ async function autoCommitAll() {
 
     // 驗證所有檔案都被包含在分組中
     const groupedIndices = new Set();
-    groups.forEach((group) => {
-      group.file_indices.forEach((index) => {
+    groups.forEach(group => {
+      group.file_indices.forEach(index => {
         groupedIndices.add(index);
       });
     });
@@ -411,7 +414,7 @@ async function autoCommitAll() {
     // 如果有檔案未被分組，創建一個 "其他變更" 群組
     if (ungroupedIndices.length > 0) {
       console.log(`\n⚠️  發現 ${ungroupedIndices.length} 個未分組的檔案，將自動歸類：`);
-      ungroupedIndices.forEach((index) => {
+      ungroupedIndices.forEach(index => {
         console.log(`   - ${changes[index].filePath}`);
       });
 
@@ -438,10 +441,10 @@ async function autoCommitAll() {
     let successCount = 0;
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];
-      const groupFiles = group.file_indices.map((index) => changes[index]);
+      const groupFiles = group.file_indices.map(index => changes[index]);
 
       // 驗證檔案索引是否有效
-      const invalidIndices = group.file_indices.filter((idx) => idx >= changes.length);
+      const invalidIndices = group.file_indices.filter(idx => idx >= changes.length);
       if (invalidIndices.length > 0) {
         console.error(`\n❌ 群組 ${i + 1} 包含無效的檔案索引:`, invalidIndices);
         console.log(`   跳過此群組: ${group.group_name}`);
