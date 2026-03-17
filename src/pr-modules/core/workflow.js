@@ -32,70 +32,75 @@ export class PRWorkflow {
    * 執行完整工作流程
    */
   async execute() {
-    // 0. 確認 gh CLI 已登入（預覽模式可跳過）
-    if (!this.config.preview) {
-      const auth = this.github.checkAuth();
-      if (!auth.authenticated) {
-        log.error('GitHub CLI 未登入，請先執行: gh auth login');
-        throw new Error('GitHub CLI 未登入');
+    try {
+      // 0. 確認 gh CLI 已登入（預覽模式可跳過）
+      if (!this.config.preview) {
+        const auth = this.github.checkAuth();
+        if (!auth.authenticated) {
+          log.error('GitHub CLI 未登入，請先執行: gh auth login');
+          throw new Error('GitHub CLI 未登入');
+        }
       }
-    }
 
-    // 1. 驗證環境和分支
-    const { baseBranch, headBranch } = await this.detectAndValidateBranches();
+      // 1. 驗證環境和分支
+      const { baseBranch, headBranch } = await this.detectAndValidateBranches();
 
-    // 2. 檢查是否有變更
-    await this.validateChanges(baseBranch, headBranch);
+      // 2. 檢查是否有變更
+      await this.validateChanges(baseBranch, headBranch);
 
-    // 3. 推送到遠端（預覽模式跳過）
-    if (!this.config.preview) {
-      await this.pushToRemote(headBranch);
-    }
+      // 3. 推送到遠端（預覽模式跳過）
+      if (!this.config.preview) {
+        await this.pushToRemote(headBranch);
+      }
 
-    // 4. 收集變更資訊
-    const changeData = this.collectChangeData(baseBranch, headBranch);
+      // 4. 收集變更資訊
+      const changeData = this.collectChangeData(baseBranch, headBranch);
 
-    // 5. AI 分析和生成 PR 內容
-    const prContent = await this.generatePRContent(changeData);
+      // 5. AI 分析和生成 PR 內容
+      const prContent = await this.generatePRContent(changeData);
 
-    // 6. 顯示預覽
-    this.displayPreview(prContent, changeData.stats);
+      // 6. 顯示預覽
+      this.displayPreview(prContent, changeData.stats);
 
-    // 預覽模式：僅顯示不創建
-    if (this.config.preview) {
-      log.info('預覽模式：未創建 PR');
-      return;
-    }
-
-    // 7. 選擇 Reviewers
-    const reviewers = await this.selectReviewers(changeData);
-
-    // 8. 確認創建
-    if (!this.config.noConfirm) {
-      const confirmed = await this.askConfirmation('是否創建此 Pull Request?');
-      if (!confirmed) {
-        log.info('已取消創建 PR');
+      // 預覽模式：僅顯示不創建
+      if (this.config.preview) {
+        log.info('預覽模式：未創建 PR');
         return;
       }
-    }
 
-    // 9. 創建 PR
-    const prUrl = await this.createPR(prContent, baseBranch, headBranch, reviewers);
+      // 7. 選擇 Reviewers
+      const reviewers = await this.selectReviewers(changeData);
 
-    // 10. 添加 Labels（如果啟用）
-    if (this.config.github.autoLabels === true && prUrl) {
-      try {
-        const prNumber = prUrl.split('/').pop();
-        await this.addLabels(prNumber, {
-          ...prContent,
-          stats: changeData.stats,
-        });
-      } catch (error) {
-        log.warning('無法自動添加 Labels: ' + error.message);
+      // 8. 確認創建
+      if (!this.config.noConfirm) {
+        const confirmed = await this.askConfirmation('是否創建此 Pull Request?');
+        if (!confirmed) {
+          log.info('已取消創建 PR');
+          return;
+        }
       }
-    }
 
-    this.logger.success('完成！');
+      // 9. 創建 PR
+      const prUrl = await this.createPR(prContent, baseBranch, headBranch, reviewers);
+
+      // 10. 添加 Labels（如果啟用）
+      if (this.config.github.autoLabels === true && prUrl) {
+        try {
+          const prNumber = prUrl.split('/').pop();
+          await this.addLabels(prNumber, {
+            ...prContent,
+            stats: changeData.stats,
+          });
+        } catch (error) {
+          log.warning('無法自動添加 Labels: ' + error.message);
+        }
+      }
+
+      this.logger.success('完成！');
+    } finally {
+      // 確保 AI 子程序一定被釋放
+      await this.ai.close();
+    }
   }
 
   /**

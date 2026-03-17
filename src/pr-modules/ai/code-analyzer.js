@@ -2,24 +2,52 @@ import { CopilotClient, approveAll } from '@github/copilot-sdk';
 import { CONSTANTS, PROJECT_SKILLS_CONTEXT } from '../utils/constants.js';
 import { getSkillsSummaryForPrompt, log } from '../utils/helpers.js';
 
+// CopilotClient 子程序啟動 + AI 模型回應可能共需 60-120s，設為 150s 保留足夠緩衝
+const AI_TIMEOUT_MS = 150000;
+
 /**
  * AI 分析器 - 負責程式碼分析和 PR 內容生成
  */
 export class AIAnalyzer {
   constructor(config = {}) {
     this.model = config.model || 'gpt-4.1';
+    this._client = null; // 複用同一個 CopilotClient，避免重複啟動子程序
   }
 
   /**
-   * 建立 AI 客戶端
+   * 取得（或建立）共用的 CopilotClient
    */
-  async createClient() {
-    const client = new CopilotClient();
-    const session = await client.createSession({ 
+  async _getOrCreateClient() {
+    if (!this._client) {
+      this._client = new CopilotClient();
+    }
+    return this._client;
+  }
+
+  /**
+   * 建立 AI Session（複用已有的 client）
+   */
+  async _createSession() {
+    const client = await this._getOrCreateClient();
+    return client.createSession({
       model: this.model,
-      onPermissionRequest: approveAll 
+      onPermissionRequest: approveAll,
     });
-    return { client, session };
+  }
+
+  /**
+   * 釋放 CopilotClient 子程序資源
+   */
+  async close() {
+    if (this._client) {
+      try {
+        await this._client.stop();
+      } catch (e) {
+        // 忽略關閉錯誤
+      } finally {
+        this._client = null;
+      }
+    }
   }
 
   /**
@@ -29,31 +57,23 @@ export class AIAnalyzer {
     const skillsSummary = getSkillsSummaryForPrompt(PROJECT_SKILLS_CONTEXT);
     const prompt = this.buildPRPrompt(commits, diff, skillsSummary);
 
-    const { client, session } = await this.createClient();
+    const session = await this._createSession();
 
-    try {
-      // 使用超時保護 (60 秒)
-      const responsePromise = session.sendAndWait({ prompt });
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('AI 請求超時 (60 秒)')), 60000);
-      });
+    // 使用超時保護（150 秒，含子程序啟動 + AI 回應）
+    const responsePromise = session.sendAndWait({ prompt });
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`AI 請求超時 (${AI_TIMEOUT_MS / 1000} 秒)`)), AI_TIMEOUT_MS);
+    });
 
-      const response = await Promise.race([responsePromise, timeoutPromise]);
-      const prContent = response?.data.content?.trim() || '';
+    const response = await Promise.race([responsePromise, timeoutPromise]);
+    const prContent = response?.data.content?.trim() || '';
 
-      if (!prContent) {
-        throw new Error('AI 未能生成 PR 內容');
-      }
-
-      return this.parsePRContent(prContent);
-    } finally {
-      // 確保 client 一定會被關閉
-      try {
-        await client.stop();
-      } catch (e) {
-        // 忽略關閉錯誤
-      }
+    if (!prContent) {
+      throw new Error('AI 未能生成 PR 內容');
     }
+
+    return this.parsePRContent(prContent);
+    // 注意：不在此 stop() client，改由 close() 統一清理以便複用
   }
 
   /**
@@ -63,15 +83,15 @@ export class AIAnalyzer {
     const skillsSummary = getSkillsSummaryForPrompt(PROJECT_SKILLS_CONTEXT);
     const prompt = this.buildAnalysisPrompt(changedFiles, diff, commits, skillsSummary);
 
-    const { client, session } = await this.createClient();
+    const session = await this._createSession();
 
     try {
       log.info('  正在使用 AI 深度分析程式碼變更...');
-      
-      // 使用超時保護 (60 秒)
+
+      // 使用超時保護（150 秒）
       const responsePromise = session.sendAndWait({ prompt });
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('AI 請求超時 (60 秒)')), 60000);
+        setTimeout(() => reject(new Error(`AI 請求超時 (${AI_TIMEOUT_MS / 1000} 秒)`)), AI_TIMEOUT_MS);
       });
 
       const response = await Promise.race([responsePromise, timeoutPromise]);
@@ -103,14 +123,8 @@ export class AIAnalyzer {
     } catch (error) {
       log.warning(`  AI 分析失敗 (${error.message})，使用基礎分析...\n`);
       return this.getFallbackAnalysis(changedFiles);
-    } finally {
-      // 確保 client 一定會被關閉
-      try {
-        await client.stop();
-      } catch (e) {
-        // 忽略關閉錯誤
-      }
     }
+    // 注意：不在此 stop() client，改由 close() 統一清理以便複用
   }
 
   /**
