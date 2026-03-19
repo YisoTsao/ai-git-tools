@@ -189,21 +189,14 @@ ${skillsSummary}
 
 ---
 
-## ✅ 已套用規則總結
+## ⚠️ 風險與注意事項
+**Risk Level**: \`LOW\` / \`MEDIUM\` / \`HIGH\`
 
-> 請根據上方提供的專案規範（React Best Practices 和 Frontend Guidelines），分析本次程式碼變更
+[說明潛在風險、破壞性變更（breaking changes）、需要特別小心的地方；沒有則填「無」]
 
-### React Best Practices 規則
-
-**✅ 已正確套用的規則**：
-[列出本次變更中有正確使用的規則]
-
-**❌ 需要改善的項目**：
-[列出本次變更中違反的規則]
-
-### Frontend Guidelines
-
-[根據程式碼實際內容檢查相關項目]
+## 👀 Reviewer 重點
+- [請 reviewer 特別關注的邏輯或設計決策 1]
+- [請 reviewer 特別關注的邏輯或設計決策 2]
 
 ---
 
@@ -220,6 +213,8 @@ ${skillsSummary}
    - 檢查主要變更列表，如果提到「新增 xxx」就必須勾選 ✨ 新功能 (feat)
    - 新增配置檔、新增組件、新增 API、新增功能都算 feat
    - 一個 PR 可以同時是多種類型（如：feat + refactor + chore）
+   8. **Risk Level 判斷**：HIGH = 影響付款/登入/資料寫入核心流程；MEDIUM = 影響現有功能但有降級保護；LOW = 新增功能或純重構
+9. **Reviewer 重點**：列出最值得仔細看的 1-3 個地方（核心演算法、架構決策、潛在邊界條件）
 
 ---
 
