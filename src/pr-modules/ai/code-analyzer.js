@@ -2,6 +2,9 @@ import { CopilotClient, approveAll } from '@github/copilot-sdk';
 import { CONSTANTS, PROJECT_SKILLS_CONTEXT } from '../utils/constants.js';
 import { getSkillsSummaryForPrompt, log } from '../utils/helpers.js';
 
+// 讓 CopilotClient 啟動的 Node 子程序繼承此設定，靜音 SQLite ExperimentalWarning
+process.env.NODE_NO_WARNINGS = '1';
+
 // CopilotClient 子程序啟動 + AI 模型回應可能共需 60-120s，設為 150s 保留足夠緩衝
 const AI_TIMEOUT_MS = 150000;
 
@@ -36,6 +39,14 @@ export class AIAnalyzer {
   }
 
   /**
+   * 預熱 CopilotClient — 在 workflow 開始時盡早呼叫，
+   * 讓 subprocess 在 git 操作期間並行啟動，避免 session.idle timeout
+   */
+  async warmup() {
+    await this._getOrCreateClient();
+  }
+
+  /**
    * 釋放 CopilotClient 子程序資源
    */
   async close() {
@@ -51,28 +62,55 @@ export class AIAnalyzer {
   }
 
   /**
-   * 生成 PR 內容
+   * 生成 PR 內容（失敗時自動重建 client 重試一次）
    */
   async generatePRContent(commits, diff) {
-    const skillsSummary = getSkillsSummaryForPrompt(PROJECT_SKILLS_CONTEXT);
-    const prompt = this.buildPRPrompt(commits, diff, skillsSummary);
+    const prompt = this.buildPRPrompt(commits, diff);
 
-    const session = await this._createSession();
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        if (attempt === 2) {
+          log.info('  重試 AI 請求（重建 session）...\n');
+          await this.close(); // 釋放舊 client，下一次 _createSession 會建新的
+        }
 
-    // 使用超時保護（150 秒，含子程序啟動 + AI 回應）
-    const responsePromise = session.sendAndWait({ prompt });
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error(`AI 請求超時 (${AI_TIMEOUT_MS / 1000} 秒)`)), AI_TIMEOUT_MS);
-    });
+        const session = await this._createSession();
 
-    const response = await Promise.race([responsePromise, timeoutPromise]);
-    const prContent = response?.data.content?.trim() || '';
+        const responsePromise = session.sendAndWait({ prompt });
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(
+            () => reject(new Error(`AI 請求超時 (${AI_TIMEOUT_MS / 1000} 秒)`)),
+            AI_TIMEOUT_MS
+          );
+        });
 
-    if (!prContent) {
-      throw new Error('AI 未能生成 PR 內容');
+        const response = await Promise.race([responsePromise, timeoutPromise]);
+        const prContent = response?.data.content?.trim() || '';
+
+        if (!prContent) {
+          throw new Error('AI 未能生成 PR 內容');
+        }
+
+        return this.parsePRContent(prContent);
+      } catch (error) {
+        // SDK 內部 session.idle timeout（hardcoded 60s）→ 重試一次
+        const isSessionIdleTimeout =
+          error.message?.includes('session.idle') || error.message?.includes('Timeout after');
+        if (isSessionIdleTimeout) {
+          if (attempt === 1) {
+            log.warning(`  AI session 超時，即將重試...\n`);
+            continue;
+          }
+          // 兩次都超時 → 模型速度不足，給出具體建議
+          log.error(`  模型 ${this.model} 在此變更大小下回應過慢`);
+          log.info(`  建議改用更快的模型：ai-git-tools pr --model gpt-5.4\n`);
+          throw new Error(`AI 生成超時：模型 ${this.model} 回應過慢，請加 --model gpt-5.4 重試`);
+        }
+        throw error;
+      }
     }
-
-    return this.parsePRContent(prContent);
+    // unreachable，但保留讓 linter 滿意
+    throw new Error('AI 未能生成 PR 內容');
     // 注意：不在此 stop() client，改由 close() 統一清理以便複用
   }
 
@@ -91,7 +129,10 @@ export class AIAnalyzer {
       // 使用超時保護（150 秒）
       const responsePromise = session.sendAndWait({ prompt });
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error(`AI 請求超時 (${AI_TIMEOUT_MS / 1000} 秒)`)), AI_TIMEOUT_MS);
+        setTimeout(
+          () => reject(new Error(`AI 請求超時 (${AI_TIMEOUT_MS / 1000} 秒)`)),
+          AI_TIMEOUT_MS
+        );
       });
 
       const response = await Promise.race([responsePromise, timeoutPromise]);
@@ -130,11 +171,9 @@ export class AIAnalyzer {
   /**
    * 建立 PR 生成 Prompt
    */
-  buildPRPrompt(commits, diff, skillsSummary) {
+  buildPRPrompt(commits, diff) {
     return `你是一個專業的前端工程師，熟悉 Next.js、React 效能優化和團隊開發規範。
 請根據以下 commit 訊息和程式碼變更，直接輸出一個清晰的 Pull Request 標題和描述。
-
-${skillsSummary}
 
 **輸出格式**（不要加任何引導語，直接輸出以下內容）：
 
@@ -160,18 +199,7 @@ ${skillsSummary}
 - [ ] ⚡ 效能改進 (perf)
 - [ ] 🔧 其他 (chore)
 
-> **重要**: 請仔細分析 diff 和 commit 訊息，**自動勾選**對應的類型（可複選），將 [ ] 改為 [x]
-> 
-> **判斷準則**：
-> - ✨ **新功能 (feat)**: 新增檔案、新增 API、新增組件、新增功能邏輯、新增配置選項
-> - 🐛 **Bug 修復 (fix)**: 修復錯誤、修正邏輯問題
-> - ♻️ **重構 (refactor)**: 重組程式碼結構但不改變功能
-> - 💄 **樣式調整 (style)**: UI/CSS 調整、格式化
-> - 📝 **文件更新 (docs)**: README、註解、文檔變更
-> - ⚡ **效能改進 (perf)**: 優化效能
-> - 🔧 **其他 (chore)**: 建構工具、依賴更新、配置調整
-> 
-> **特別注意**: 如果 diff 中有「新增檔案」或「新增功能」，**務必勾選** ✨ 新功能 (feat)
+> 根據 diff 和 commit 自動勾選（可複選），[ ] 改為 [x]；有新增檔案或功能必勾 ✨ feat
 
 ## 🧪 測試方法
 1. [具體的測試步驟 1]
@@ -200,21 +228,7 @@ ${skillsSummary}
 
 ---
 
-**規則**：
-1. PR 標題格式：type: 簡短描述（不超過 50 字）
-2. type 必須符合 Conventional Commits
-3. 變更摘要用 2-3 句話概括整體影響
-4. 全部使用繁體中文（台灣正體）
-5. 不要在開頭加引導語句
-6. 直接開始輸出 # [type]: [標題]
-7. **變更類型判斷必須準確**：
-   - 檢查 diff 中是否有 "new file mode" 或大量 "+++" 行（表示新增檔案）
-   - 檢查 commit 訊息是否包含「新增」、「add」、「feat」等關鍵字
-   - 檢查主要變更列表，如果提到「新增 xxx」就必須勾選 ✨ 新功能 (feat)
-   - 新增配置檔、新增組件、新增 API、新增功能都算 feat
-   - 一個 PR 可以同時是多種類型（如：feat + refactor + chore）
-   8. **Risk Level 判斷**：HIGH = 影響付款/登入/資料寫入核心流程；MEDIUM = 影響現有功能但有降級保護；LOW = 新增功能或純重構
-9. **Reviewer 重點**：列出最值得仔細看的 1-3 個地方（核心演算法、架構決策、潛在邊界條件）
+**規則**：直接輸出 # [type]: [標題]，繁體中文（台灣正體），type 符合 Conventional Commits；新增檔案/功能優先 feat，可複選多種類型；Risk Level：HIGH=核心流程，MEDIUM=影響現有功能，LOW=新增或重構；Reviewer 重點列 1-3 個值得仔細看的地方。
 
 ---
 
@@ -349,7 +363,7 @@ ${diff.length > CONSTANTS.MAX_DIFF_LENGTH ? '\n... (內容過長已截斷)' : ''
     let riskLevel = '低';
     const riskReasons = [];
 
-    changedFiles.forEach((file) => {
+    changedFiles.forEach(file => {
       const lower = file.toLowerCase();
       if (lower.includes('/api/')) {
         if (!impacts.includes('API 層')) impacts.push('API 層');
@@ -367,7 +381,7 @@ ${diff.length > CONSTANTS.MAX_DIFF_LENGTH ? '\n... (內容過長已截斷)' : ''
     });
 
     const warnings = [];
-    const hasTestFiles = changedFiles.some((f) => f.includes('test') || f.includes('spec'));
+    const hasTestFiles = changedFiles.some(f => f.includes('test') || f.includes('spec'));
     if (!hasTestFiles && changedFiles.length > 3) {
       warnings.push({
         level: '⚠️',
@@ -405,7 +419,7 @@ ${diff.length > CONSTANTS.MAX_DIFF_LENGTH ? '\n... (內容過長已截斷)' : ''
 
     if (blastRadius.riskReasons && blastRadius.riskReasons.length > 0) {
       enhancedBody += `**風險因素**：\n`;
-      blastRadius.riskReasons.forEach((reason) => {
+      blastRadius.riskReasons.forEach(reason => {
         enhancedBody += `- ${reason}\n`;
       });
       enhancedBody += '\n';
@@ -413,7 +427,7 @@ ${diff.length > CONSTANTS.MAX_DIFF_LENGTH ? '\n... (內容過長已截斷)' : ''
 
     if (blastRadius.externalBehaviors && blastRadius.externalBehaviors.length > 0) {
       enhancedBody += `**對外行為變更**：\n`;
-      blastRadius.externalBehaviors.forEach((behavior) => {
+      blastRadius.externalBehaviors.forEach(behavior => {
         enhancedBody += `- ${behavior}\n`;
       });
       enhancedBody += '\n';
@@ -422,7 +436,7 @@ ${diff.length > CONSTANTS.MAX_DIFF_LENGTH ? '\n... (內容過長已截斷)' : ''
     // 添加規範警告
     if (warnings.length > 0) {
       enhancedBody += '\n## ⚠️ 注意事項\n\n';
-      warnings.forEach((warning) => {
+      warnings.forEach(warning => {
         enhancedBody += `${warning.level} **${warning.message}**\n`;
         if (warning.suggestion) {
           enhancedBody += `  - 💡 ${warning.suggestion}\n`;

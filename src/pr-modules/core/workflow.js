@@ -42,6 +42,9 @@ export class PRWorkflow {
         }
       }
 
+      // 0.5 提前預熱 AI client（異步非阻塞），讓 subprocess 在 git 操作期間並行啟動
+      this.ai.warmup().catch(() => {});
+
       // 1. 驗證環境和分支
       const { baseBranch, headBranch } = await this.detectAndValidateBranches();
 

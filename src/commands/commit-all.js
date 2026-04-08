@@ -96,16 +96,30 @@ function getAllChanges() {
 async function analyzeAndGroupChanges(changes, config) {
   console.log('🤖 正在使用 AI 分析變更並分組...\n');
 
-  // 準備變更摘要（限制每個檔案的 diff 長度）
-  const maxDiffPerFile = Math.floor(config.ai.maxDiffLength / Math.max(changes.length, 1));
+  // 檔案數量超過此閾值時，改為僅傳送檔名＋狀態，不含 diff 內容，避免 prompt 超過模型 context window
+  const FILE_DIFF_THRESHOLD = 30;
+  const useFilenameOnly = changes.length > FILE_DIFF_THRESHOLD;
+
+  if (useFilenameOnly) {
+    console.log(`📝 檔案數量較多（${changes.length} 個），使用檔名分析模式以避免超出模型限制\n`);
+  }
+
+  // 每個檔案的 diff 字元預算（字元數，非行數）
+  const perFileBudget = Math.floor(config.ai.maxDiffLength / Math.max(changes.length, 1));
+
   const changeSummary = changes
     .map((change, index) => {
-      const diff = getFileDiff(change.filePath, change.isNew, change.isDeleted);
-      const lines = diff.split('\n');
-      const truncatedDiff = lines.slice(0, Math.min(50, maxDiffPerFile / 100)).join('\n');
       let status = '（已修改）';
       if (change.isNew) status = '（新檔案）';
       if (change.isDeleted) status = '（已刪除）';
+
+      if (useFilenameOnly) {
+        return `[檔案 ${index}] ${change.filePath} ${status}`;
+      }
+
+      const diff = getFileDiff(change.filePath, change.isNew, change.isDeleted);
+      const truncatedDiff =
+        diff.length > perFileBudget ? diff.substring(0, perFileBudget) + '\n...(已截斷)' : diff;
       return `[檔案 ${index}] ${change.filePath}\n${status}\n${truncatedDiff}\n`;
     })
     .join('\n---\n\n');
@@ -180,13 +194,19 @@ ${changeSummary}
  * 為特定群組生成 commit message
  */
 async function generateCommitMessage(group, files, config) {
+  // 每個檔案最多 2000 字元，避免單一群組內大量 diff 超出限制
+  const MAX_DIFF_PER_FILE = 2000;
   const filesList = files
     .map((file) => {
       const diff = getFileDiff(file.filePath, file.isNew, file.isDeleted);
+      const truncatedDiff =
+        diff.length > MAX_DIFF_PER_FILE
+          ? diff.substring(0, MAX_DIFF_PER_FILE) + '\n...(已截斷)'
+          : diff;
       let status = '修改';
       if (file.isNew) status = '新增';
       if (file.isDeleted) status = '刪除';
-      return `檔案: ${file.filePath} [${status}]\n${diff}`;
+      return `檔案: ${file.filePath} [${status}]\n${truncatedDiff}`;
     })
     .join('\n\n---\n\n');
 
