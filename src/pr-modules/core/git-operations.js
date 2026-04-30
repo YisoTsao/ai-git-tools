@@ -11,9 +11,9 @@ export class GitOperations {
    */
   detectReleaseBranches() {
     try {
-      // 嘗試同步遠端，失敗就用本機已知的遠端資訊
+      // 嘗試同步遠端（含 --prune 以清除已刪除的遠端分支），失敗就用本機已知的遠端資訊
       try {
-        execSync('git fetch origin', { stdio: 'ignore', timeout: 15000 });
+        execSync('git fetch --prune origin', { stdio: 'ignore', timeout: 15000 });
       } catch (_) {
         // fetch 失敗，繼續使用已經 cache 的遠端分支
       }
