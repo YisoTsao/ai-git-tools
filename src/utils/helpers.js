@@ -44,18 +44,52 @@ export function validateCommitMessage(message) {
 }
 
 /**
+ * 檢測 Copilot 授權錯誤
+ */
+export function isCopilotSubscriptionError(error) {
+  if (!error) return false;
+
+  const message = (error.message || error.toString() || '').toLowerCase();
+  const originalError = (error.originalError?.message || '').toLowerCase();
+
+  return (
+    error.isCopilotAuth === true ||
+    message.includes('permission') ||
+    message.includes('unauthorized') ||
+    message.includes('forbidden') ||
+    message.includes('not authorized') ||
+    originalError.includes('permission') ||
+    originalError.includes('unauthorized')
+  );
+}
+
+/**
  * 錯誤處理
  */
 export function handleError(error) {
   console.error('\n❌ 錯誤:', error.message);
-  
+
+  // 檢查是否為 Copilot 授權相關的錯誤
+  if (isCopilotSubscriptionError(error)) {
+    console.log('\n🔐 看起來是 GitHub Copilot 授權問題\n');
+    console.log('解決方案:');
+    console.log('  1. 確認你的 GitHub 帳號已訂閱 GitHub Copilot');
+    console.log('  2. 驗證 VS Code 中使用的 GitHub 帳號是否有 Copilot 訪問權限');
+    console.log('  3. 嘗試重新登入:');
+    console.log('     gh auth logout');
+    console.log('     gh auth login');
+    console.log('  4. 若是公司帳號，確保使用公司的 GitHub 帳號登入');
+    console.log('');
+    return;
+  }
+
   if (error.suggestions && error.suggestions.length > 0) {
     console.log('\n💡 建議解決方案:');
     error.suggestions.forEach((suggestion, index) => {
       console.log(`  ${index + 1}. ${suggestion}`);
     });
   }
-  
+
   if (error.stack && process.env.VERBOSE) {
     console.error('\n堆疊追蹤:');
     console.error(error.stack);

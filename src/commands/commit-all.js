@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { loadCommitConfig } from '../core/config-loader.js';
 import { AIClient } from '../core/ai-client.js';
 import { Logger } from '../utils/logger.js';
-import { handleError } from '../utils/helpers.js';
+import { handleError, isCopilotSubscriptionError } from '../utils/helpers.js';
 
 /**
  * 獲取檔案的變更內容
@@ -54,7 +54,7 @@ function getAllChanges() {
     }
 
     const changes = [];
-    const lines = status.split('\n').filter((line) => line.trim());
+    const lines = status.split('\n').filter(line => line.trim());
 
     for (const line of lines) {
       const statusCode = line.substring(0, 2);
@@ -184,8 +184,19 @@ ${changeSummary}
   try {
     return AIClient.parseJSON(response);
   } catch (error) {
-    console.error('❌ 無法解析 AI 回應:', error.message);
-    console.log('原始回應:', response);
+    // 區分不同類型的錯誤
+    if (isCopilotSubscriptionError(error)) {
+      console.error('\n🔑 看起來是 GitHub Copilot 授權問題');
+      console.error('\n解決方案:');
+      console.error('  1. 確認你的 GitHub 帳號已訂閱 GitHub Copilot');
+      console.error('  2. 驗證 VS Code 中使用的 GitHub 帳號是否有 Copilot 存取權限');
+      console.error('  3. 嘗試重新登入:');
+      console.error('     gh auth logout');
+      console.error('     gh auth login');
+    } else {
+      console.error('❌ 無法解析 AI 回應:', error.message);
+      console.log('原始回應:', response);
+    }
     return null;
   }
 }
@@ -197,7 +208,7 @@ async function generateCommitMessage(group, files, config) {
   // 每個檔案最多 2000 字元，避免單一群組內大量 diff 超出限制
   const MAX_DIFF_PER_FILE = 2000;
   const filesList = files
-    .map((file) => {
+    .map(file => {
       const diff = getFileDiff(file.filePath, file.isNew, file.isDeleted);
       const truncatedDiff =
         diff.length > MAX_DIFF_PER_FILE
@@ -295,7 +306,7 @@ async function commitGroup(group, files, config) {
 
       console.log(`\n   📝 Commit Message:`);
       console.log(`   ${'─'.repeat(50)}`);
-      commitMessage.split('\n').forEach((line) => {
+      commitMessage.split('\n').forEach(line => {
         console.log(`   ${line}`);
       });
       console.log(`   ${'─'.repeat(50)}`);
@@ -386,8 +397,8 @@ export async function commitAllCommand() {
 
     // 驗證所有檔案都被包含在分組中
     const groupedIndices = new Set();
-    groups.forEach((group) => {
-      group.file_indices.forEach((index) => {
+    groups.forEach(group => {
+      group.file_indices.forEach(index => {
         groupedIndices.add(index);
       });
     });
@@ -402,7 +413,7 @@ export async function commitAllCommand() {
     // 如果有檔案未被分組，創建一個 "其他變更" 群組
     if (ungroupedIndices.length > 0) {
       console.log(`\n⚠️  發現 ${ungroupedIndices.length} 個未分組的檔案，將自動歸類：`);
-      ungroupedIndices.forEach((index) => {
+      ungroupedIndices.forEach(index => {
         console.log(`   - ${changes[index].filePath}`);
       });
 
@@ -420,7 +431,7 @@ export async function commitAllCommand() {
       console.log(`   群組 ${index + 1}: ${group.group_name} (${group.commit_type})`);
       console.log(`   └─ 包含 ${group.file_indices.length} 個檔案`);
       if (config.output.verbose) {
-        group.file_indices.forEach((fileIndex) => {
+        group.file_indices.forEach(fileIndex => {
           console.log(`      - [${fileIndex}] ${changes[fileIndex].filePath}`);
         });
       }
@@ -434,10 +445,10 @@ export async function commitAllCommand() {
     let successCount = 0;
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];
-      const groupFiles = group.file_indices.map((index) => changes[index]);
+      const groupFiles = group.file_indices.map(index => changes[index]);
 
       // 驗證檔案索引是否有效
-      const invalidIndices = group.file_indices.filter((idx) => idx >= changes.length);
+      const invalidIndices = group.file_indices.filter(idx => idx >= changes.length);
       if (invalidIndices.length > 0) {
         console.error(`\n❌ 群組 ${i + 1} 包含無效的檔案索引:`, invalidIndices);
         console.log(`   跳過此群組: ${group.group_name}`);

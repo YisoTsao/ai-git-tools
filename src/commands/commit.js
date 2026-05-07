@@ -9,7 +9,13 @@ import { loadCommitConfig } from '../core/config-loader.js';
 import { GitOperations } from '../core/git-operations.js';
 import { AIClient } from '../core/ai-client.js';
 import { Logger } from '../utils/logger.js';
-import { cleanCommitMessage, validateCommitMessage, handleError, getProjectTypePrompt } from '../utils/helpers.js';
+import {
+  cleanCommitMessage,
+  validateCommitMessage,
+  handleError,
+  getProjectTypePrompt,
+  isCopilotSubscriptionError,
+} from '../utils/helpers.js';
 
 export async function commitCommand() {
   const logger = new Logger();
@@ -108,13 +114,27 @@ ${truncatedDiff}`;
     // 所有重試都失敗
     if (!commitMessage) {
       logger.error('無法產生有效的 commit message');
-      if (lastError && config.output.verbose) {
-        console.log(`   最後錯誤: ${lastError.message}`);
+
+      // 區分不同類型的錯誤
+      if (isCopilotSubscriptionError(lastError)) {
+        console.log('\n🔑 看起來是 GitHub Copilot 授權問題\n');
+        console.log('解決方案:');
+        console.log('  1. 確認你的 GitHub 帳號已訂閱 GitHub Copilot');
+        console.log('  2. 驗證 VS Code 中使用的 GitHub 帳號是否有 Copilot 存取權限');
+        console.log('  3. 嘗試重新登入:');
+        console.log('     gh auth logout');
+        console.log('     gh auth login');
+        console.log('  4. 若是公司帳號，確保使用公司的 GitHub 帳號登入');
+      } else {
+        if (config.output.verbose && lastError) {
+          console.log(`   最後錯誤: ${lastError.message}`);
+        }
+        console.log('\n💡 建議：');
+        console.log('   1. 檢查網路連線');
+        console.log('   2. 嘗試更換 AI 模型（使用 --model 參數）');
+        console.log('   3. 確認變更內容不會太複雜或太大');
       }
-      console.log('\n💡 建議：');
-      console.log('   1. 檢查網路連線');
-      console.log('   2. 嘗試更換 AI 模型（使用 --model 參數）');
-      console.log('   3. 確認變更內容不會太複雜或太大');
+
       throw new Error('無法產生有效的 commit message');
     }
 

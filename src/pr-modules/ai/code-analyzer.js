@@ -1,6 +1,6 @@
 import { CopilotClient, approveAll } from '@github/copilot-sdk';
 import { CONSTANTS, PROJECT_SKILLS_CONTEXT } from '../utils/constants.js';
-import { getSkillsSummaryForPrompt, log } from '../utils/helpers.js';
+import { getSkillsSummaryForPrompt, log, isCopilotAuthError } from '../utils/helpers.js';
 
 // 讓 CopilotClient 啟動的 Node 子程序繼承此設定，靜音 SQLite ExperimentalWarning
 process.env.NODE_NO_WARNINGS = '1';
@@ -106,6 +106,16 @@ export class AIAnalyzer {
           log.info(`  建議改用更快的模型：ai-git-tools pr --model gpt-5.4\n`);
           throw new Error(`AI 生成超時：模型 ${this.model} 回應過慢，請加 --model gpt-5.4 重試`);
         }
+
+        // 檢測 Copilot 授權錯誤
+        if (isCopilotAuthError(error)) {
+          log.error('看起來是 GitHub Copilot 授權問題');
+          log.error('  1. 確認你的 GitHub 帳號已訂閱 GitHub Copilot');
+          log.error('  2. 驗證 VS Code 中使用的 GitHub 帳號是否有 Copilot 存取權限');
+          log.error('  3. 嘗試重新登入: gh auth logout && gh auth login');
+          throw error;
+        }
+
         throw error;
       }
     }
