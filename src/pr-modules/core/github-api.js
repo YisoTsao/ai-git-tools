@@ -63,10 +63,46 @@ export class GitHubAPI {
    */
   checkAuth() {
     try {
-      execSync('gh api user --jq .login', { stdio: 'pipe' });
-      return { authenticated: true };
+      const login = execSync('gh api user --jq .login', {
+        encoding: 'utf-8',
+        stdio: 'pipe',
+      }).trim();
+      return { authenticated: true, login };
     } catch (error) {
-      return { authenticated: false };
+      return { authenticated: false, login: null };
+    }
+  }
+
+  /**
+   * 檢查目前認證使用者對此倉庫的權限
+   * @returns {{permission: string|null, canCreatePR: boolean, owner: string|null, repo: string|null}}
+   */
+  checkRepositoryPermission() {
+    try {
+      const remoteUrl = execSync('git remote get-url origin', {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+
+      // 解析 owner/repo，支援 HTTPS 與 SSH
+      const match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/);
+      if (!match) {
+        return { permission: null, canCreatePR: false, owner: null, repo: null };
+      }
+
+      const [, owner, repo] = match;
+      const viewerJson = execSync(
+        `gh repo view ${owner}/${repo} --json viewerPermission`,
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+      );
+      const { viewerPermission } = JSON.parse(viewerJson);
+
+      // ADMIN / MAINTAIN / WRITE 通常可以建立 PR；READ / TRIAGE 不行
+      const canCreatePR = ['ADMIN', 'MAINTAIN', 'WRITE'].includes(viewerPermission);
+
+      return { permission: viewerPermission, canCreatePR, owner, repo };
+    } catch (error) {
+      return { permission: null, canCreatePR: false, owner: null, repo: null };
     }
   }
 
@@ -271,6 +307,21 @@ export class GitHubAPI {
           return prUrl;
         } catch (error) {
           this.safeUnlink(bodyFile);
+
+          // 偵測常見權限錯誤並給出清楚提示
+          const stderr = error.stderr?.toString?.() || error.message || '';
+          if (stderr.includes('must be a collaborator')) {
+            const auth = this.checkAuth();
+            const perm = this.checkRepositoryPermission();
+            throw new Error(
+              `建立 PR 失敗：帳號 ${auth.login || '目前使用者'} 不是 ${perm.owner}/${perm.repo} 的協作者（權限：${perm.permission}）。\n` +
+              '解決方式：\n' +
+              `  1. 請 ${perm.owner} 到 Settings > Collaborators 將你加入（需要 Write 權限）\n` +
+              '  2. 或執行 gh auth login 切換到有權限的帳號\n' +
+              '  3. 若是從 fork 開發，請推送分支到自己的 fork 後再建立 PR'
+            );
+          }
+
           throw error;
         }
       }

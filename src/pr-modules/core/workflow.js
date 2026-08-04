@@ -40,6 +40,26 @@ export class PRWorkflow {
           log.error('GitHub CLI 未登入，請先執行: gh auth login');
           throw new Error('GitHub CLI 未登入');
         }
+
+        // 0.1 確認對當前倉庫有建立 PR 的權限
+        const perm = this.github.checkRepositoryPermission();
+        if (!perm.canCreatePR) {
+          log.error(`目前帳號 ${auth.login} 對 ${perm.owner}/${perm.repo} 的權限為「${perm.permission}」，無法建立 Pull Request`);
+          log.info('解決方案：');
+          console.log(`  1. 請倉庫擁有者將 ${auth.login} 加入 Collaborator（需要 Write 以上權限）`);
+          console.log('  2. 或切換到有權限的帳號：gh auth login');
+          console.log('  3. 如果是 fork 的倉庫，請推送分支到自己的 fork 後再建立 PR');
+          console.log('');
+          throw new PRError(
+            `權限不足：${auth.login} 無法在 ${perm.owner}/${perm.repo} 建立 PR`,
+            'INSUFFICIENT_PERMISSION',
+            [
+              `請 ${perm.owner} 將 ${auth.login} 加入 Collaborator`,
+              '執行 gh auth login 切換到有權限的帳號',
+              '若是 fork，請推送到自己的 fork 再建立 PR',
+            ]
+          );
+        }
       }
 
       // 0.5 提前預熱 AI client（異步非阻塞），讓 subprocess 在 git 操作期間並行啟動

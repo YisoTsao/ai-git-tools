@@ -16,6 +16,14 @@ export function generatePRContentPrompt(commits, diff) {
   return `你是一個專業的前端工程師，熟悉 Next.js、React 效能優化和團隊開發規範。
 請根據以下 commit 訊息和程式碼變更，直接輸出一個清晰的 Pull Request 標題和描述。
 
+**重要原則**：
+- 只根據實際的 commit 訊息和 diff 內容描述變更，不要臆測或誇大
+- 如果 commit 中沒有提到「新增指令 / 新增 API / 新增組件」，請不要用這些詞
+- 文件（如 .github/copilot-instructions.md、prompt 檔案、README）應描述為「新增/更新文件」而非「新增指令」
+- 如果 OpenSpec prompt 被刪除並改為 OpsX prompt，請描述為「以 OpsX 取代 OpenSpec」，不要說「新增 OpenSpec prompt」
+- package.json 若只有版本號變更，請描述為「更新版本號」，不要說「更新相依」
+- 重構相關的改動請優先使用 refactor 類型
+
 **輸出格式**（不要加任何引導語，直接輸出以下內容）：
 
 # [type]: [PR 標題]
@@ -69,7 +77,13 @@ export function generatePRContentPrompt(commits, diff) {
 
 ---
 
-**規則**：直接輸出 # [type]: [標題]，繁體中文（台灣正體），type 符合 Conventional Commits；新增檔案/功能優先 feat，可複選多種類型；Risk Level：HIGH=核心流程，MEDIUM=影響現有功能，LOW=新增或重構；Reviewer 重點列 1-3 個值得仔細看的地方。
+**規則**：
+- 直接輸出 # [type]: [標題]，繁體中文（台灣正體）
+- type 必須符合 Conventional Commits；以 commit 內容為準，新增檔案/功能優先 feat，重構優先 refactor
+- 變更類型只勾選實際出現的類型，沒有 fix 類 commit 就不要勾 Bug 修復
+- Risk Level：HIGH=核心流程，MEDIUM=影響現有功能，LOW=新增或純重構
+- Reviewer 重點列 1-3 個值得仔細看的地方
+- 描述必須和 commit 訊息一致，禁止虛構功能或誇大影響範圍
 
 ---
 
