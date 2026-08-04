@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
-import { CONSTANTS, colors } from '../utils/constants.js';
-import { log } from '../utils/helpers.js';
+import { CONSTANTS, colors } from '../../utils/constants.js';
+import { log } from '../../utils/logger.js';
 import { InteractiveSelect } from '../ui/interactive-select.js';
 
 /**

@@ -1,5 +1,5 @@
 import { emitKeypressEvents } from 'readline';
-import { colors, cursor } from '../utils/constants.js';
+import { colors, cursor } from '../../utils/constants.js';
 
 /**
  * 互動式選擇工具（使用方向鍵和空白鍵）
