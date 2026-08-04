@@ -1,18 +1,9 @@
 /**
  * Logger 工具
- * 基於 scripts/ai-pr-modules/ui/logger.mjs
+ * 統一供所有命令使用
  */
 
-const colors = {
-  reset: '\x1b[0m',
-  bright: '\x1b[1m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  magenta: '\x1b[35m',
-};
+import { colors } from './constants.js';
 
 export class Logger {
   info(msg) {
@@ -49,3 +40,14 @@ export class Logger {
     console.log('═'.repeat(60));
   }
 }
+
+/**
+ * 簡易日誌輔助物件（用於不需要實例化的場景）
+ */
+export const log = {
+  info: (msg) => console.log(`${colors.blue}ℹ${colors.reset} ${msg}`),
+  success: (msg) => console.log(`${colors.green}✅${colors.reset} ${msg}`),
+  warning: (msg) => console.log(`${colors.yellow}⚠️${colors.reset} ${msg}`),
+  error: (msg) => console.log(`${colors.red}❌${colors.reset} ${msg}`),
+  step: (msg) => console.log(`${colors.cyan}▶${colors.reset} ${msg}`),
+};

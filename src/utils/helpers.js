@@ -1,7 +1,22 @@
 /**
  * Helper 工具函式
- * 基於 scripts/ai-pr-modules/utils/helpers.mjs
+ * 統一供所有命令使用
  */
+
+import { colors } from './constants.js';
+
+/**
+ * 自訂錯誤類別（PR 流程使用）
+ */
+export class PRError extends Error {
+  constructor(message, code, suggestions = [], diagnosticCommand = null) {
+    super(message);
+    this.name = 'PRError';
+    this.code = code;
+    this.suggestions = suggestions;
+    this.diagnosticCommand = diagnosticCommand;
+  }
+}
 
 /**
  * 清理 commit message
@@ -44,6 +59,11 @@ export function validateCommitMessage(message) {
 }
 
 /**
+ * 檢測 Copilot 授權錯誤（code-analyzer 使用別名）
+ */
+export const isCopilotAuthError = isCopilotSubscriptionError;
+
+/**
  * 檢測 Copilot 授權錯誤
  */
 export function isCopilotSubscriptionError(error) {
@@ -67,9 +87,7 @@ export function isCopilotSubscriptionError(error) {
  * 錯誤處理
  */
 export function handleError(error) {
-  console.error('\n❌ 錯誤:', error.message);
-
-  // 檢查是否為 Copilot 授權相關的錯誤
+  // 先檢查是否為 Copilot 授權相關的錯誤
   if (isCopilotSubscriptionError(error)) {
     console.log('\n🔐 看起來是 GitHub Copilot 授權問題\n');
     console.log('解決方案:');
@@ -82,6 +100,25 @@ export function handleError(error) {
     console.log('');
     return;
   }
+
+  if (error instanceof PRError) {
+    console.error(`\n❌ 錯誤: ${error.message}`);
+
+    if (error.suggestions && error.suggestions.length > 0) {
+      console.log(`\n${colors.cyan}💡 建議解決方案:${colors.reset}`);
+      error.suggestions.forEach((suggestion, index) => {
+        console.log(`  ${index + 1}. ${suggestion}`);
+      });
+    }
+
+    if (error.diagnosticCommand) {
+      console.log(`\n${colors.yellow}🔍 診斷命令:${colors.reset}`);
+      console.log(`  ${error.diagnosticCommand}`);
+    }
+    return;
+  }
+
+  console.error('\n❌ 錯誤:', error.message);
 
   if (error.suggestions && error.suggestions.length > 0) {
     console.log('\n💡 建議解決方案:');
