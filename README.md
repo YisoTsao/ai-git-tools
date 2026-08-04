@@ -100,7 +100,7 @@ npx ai-git-tools wf
 
 ## 📖 命令說明
 
-### \`gitai init\`
+### \`ai-git-tools init\`
 
 初始化配置檔案
 
@@ -108,7 +108,7 @@ npx ai-git-tools wf
 npx ai-git-tools init
 \`\`\`
 
-### \`gitai commit\`
+### \`ai-git-tools commit\`
 
 為已 staged 的變更生成並執行 commit
 
@@ -130,7 +130,7 @@ npx ai-git-tools commit --model claude-haiku-4.5
 npx ai-git-tools commit --verbose
 \`\`\`
 
-### \`gitai commit-all\` (別名: \`ca\`)
+### \`ai-git-tools commit-all\` (別名: \`ca\`)
 
 智能分析所有變更並自動分組提交
 
@@ -151,7 +151,7 @@ npx ai-git-tools commit-all
 npx ai-git-tools ca --verbose
 \`\`\`
 
-### \`gitai pr\`
+### \`ai-git-tools pr\`
 
 生成 PR 並發送到 GitHub
 
@@ -177,7 +177,7 @@ npx ai-git-tools pr --preview
 npx ai-git-tools pr --no-confirm
 \`\`\`
 
-### \`gitai workflow\` (別名: \`wf\`)
+### \`ai-git-tools workflow\` (別名: \`wf\`)
 
 完整工作流程：commit-all + pr
 
@@ -352,6 +352,49 @@ feat(auth): 新增使用者登入功能
 - 整合 JWT 認證機制
 \`\`\`
 
+## 🚀 發布到 npm
+
+若你是本專案維護者，發布新版本到 npm 的步驟如下：
+
+### 1. 確認已登入 npm
+
+```bash
+npm whoami
+```
+
+若未登入，請執行：
+
+```bash
+npm login
+```
+
+### 2. 確認版本號
+
+修改 [package.json](package.json) 中的 `version` 欄位（例如 `2.0.80`）。
+
+> 每次發布版本號必須遞增，否則 npm 會拒絕。
+
+### 3. 執行發布
+
+```bash
+npm run lint
+npm publish --access public
+```
+
+`prepublishOnly` 會自動執行 `npm run lint`，`prepare` 會自動設定 `bin/cli.js` 為可執行檔。
+
+### 4. 驗證發布
+
+```bash
+npm view ai-git-tools version
+```
+
+### 注意事項
+
+- 發布前請確認工作目錄乾淨（`git status` 無未提交變更）
+- npm 會自動修正 `package.json` 格式問題（例如 `repository.url` 會正規化為 `git+https://...`）
+- 公開套件請使用 `--access public`，私有套件可省略或改為 `--access restricted`
+
 ## 🤔 常見問題
 
 ### Q: 需要安裝 GitHub Copilot 嗎？
@@ -384,7 +427,7 @@ MIT License
 
 ## 📧 聯絡
 
-有問題或建議？歡迎[提交 Issue](https://github.com/yourusername/ai-git-tools/issues)
+有問題或建議？歡迎[提交 Issue](https://github.com/YisoTsao/ai-git-tools/issues)
 
 ---
 
