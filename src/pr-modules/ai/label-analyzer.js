@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import { log } from '../utils/helpers.js';
+import { log } from '../../utils/logger.js';
 
 /**
  * Label 分析器 - 自動為 PR 添加合適的標籤
