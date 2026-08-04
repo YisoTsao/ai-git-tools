@@ -1,12 +1,14 @@
 /**
  * Git 操作封裝
- * 基於 scripts/ai-pr-modules/core/git-operations.mjs
+ * 統一 commit 與 PR 命令的 Git 操作
  */
 
 import { execSync } from 'child_process';
+import { CONSTANTS } from '../utils/constants.js';
+import { PRError } from '../utils/helpers.js';
 
-const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
-const DIFF_CONTEXT_LINES = 50;
+const MAX_BUFFER_SIZE = CONSTANTS.MAX_BUFFER_SIZE;
+const DIFF_CONTEXT_LINES = CONSTANTS.DIFF_CONTEXT_LINES;
 
 export class GitOperations {
   /**
@@ -60,7 +62,11 @@ export class GitOperations {
    */
   static detectReleaseBranches() {
     try {
-      execSync('git fetch origin', { stdio: 'ignore' });
+      try {
+        execSync('git fetch --prune origin', { stdio: 'ignore', timeout: 15000 });
+      } catch (_) {
+        // fetch 失敗，繼續使用已經 cache 的遠端分支
+      }
       const branches = execSync('git branch -r', { encoding: 'utf-8' })
         .toString()
         .split('\n')
@@ -82,18 +88,24 @@ export class GitOperations {
 
     const monthlyBranches = branches.filter((b) => b.includes('-m'));
     const weeklyBranches = branches.filter((b) => b.includes('-w'));
-    const priorityBranches = monthlyBranches.length > 0 ? monthlyBranches : weeklyBranches;
+    const priorityBranches =
+      monthlyBranches.length > 0
+        ? monthlyBranches
+        : weeklyBranches.length > 0
+          ? weeklyBranches
+          : branches;
 
     priorityBranches.sort().reverse();
-    return priorityBranches[0];
+    return priorityBranches[0] || null;
   }
 
   /**
    * 獲取變更的檔案列表
    */
-  static getChangedFiles(baseBranch, headBranch) {
+  static getChangedFiles(baseBranch, headBranch, useRemoteHead = false) {
     try {
-      const files = execSync(`git diff --name-only origin/${baseBranch}...${headBranch}`, {
+      const headRef = useRemoteHead ? `origin/${headBranch}` : headBranch;
+      const files = execSync(`git diff --name-only origin/${baseBranch}...${headRef}`, {
         encoding: 'utf-8',
       })
         .split('\n')
@@ -107,35 +119,41 @@ export class GitOperations {
   /**
    * 獲取 commit 列表
    */
-  static getCommits(baseBranch, headBranch) {
+  static getCommits(baseBranch, headBranch, options = {}) {
+    const { oneline = true, noDecorate = true, useRemoteHead = false } = options;
     try {
-      return execSync(`git log origin/${baseBranch}..origin/${headBranch} --oneline`, {
-        encoding: 'utf-8',
-      });
+      const headRef = useRemoteHead ? `origin/${headBranch}` : headBranch;
+      let cmd = `git log origin/${baseBranch}..${headRef}`;
+      if (oneline) cmd += ' --oneline';
+      if (noDecorate) cmd += ' --no-decorate';
+
+      return execSync(cmd, { encoding: 'utf-8' });
     } catch (error) {
-      throw new Error(`無法比較分支差異: ${error.message}`);
+      throw new PRError(
+        '無法比較分支差異',
+        'GIT_COMPARE_FAILED',
+        ['檢查遠端分支是否存在: git branch -r', '執行診斷: npm run diagnose:pr'],
+        `git log origin/${baseBranch}..${headBranch}`
+      );
     }
   }
 
   /**
    * 獲取 diff
    */
-  static getDiff(baseBranch, headBranch) {
+  static getDiff(baseBranch, headBranch, useRemoteHead = false, maxBuffer = MAX_BUFFER_SIZE) {
     try {
-      return execSync(`git diff origin/${baseBranch}...${headBranch}`, {
+      const headRef = useRemoteHead ? `origin/${headBranch}` : headBranch;
+      return execSync(`git diff origin/${baseBranch}...${headRef}`, {
         encoding: 'utf-8',
-        maxBuffer: MAX_BUFFER_SIZE,
+        maxBuffer,
       });
     } catch (error) {
-      // 嘗試替代方案
-      try {
-        return execSync(`git diff origin/${baseBranch}..${headBranch}`, {
-          encoding: 'utf-8',
-          maxBuffer: MAX_BUFFER_SIZE,
-        });
-      } catch (fallbackError) {
-        throw new Error(`無法獲取分支差異: ${error.message}`);
-      }
+      const headRef = useRemoteHead ? `origin/${headBranch}` : headBranch;
+      return execSync(`git diff origin/${baseBranch}..${headRef}`, {
+        encoding: 'utf-8',
+        maxBuffer,
+      });
     }
   }
 
@@ -143,39 +161,60 @@ export class GitOperations {
    * 智能截斷 diff
    * 保留前後各 50 行，中間用省略標記
    */
-  static truncateDiff(diff, maxLength = 8000) {
+  static truncateDiff(diff, maxLength = CONSTANTS.MAX_DIFF_LENGTH) {
     if (diff.length <= maxLength) return diff;
 
     const lines = diff.split('\n');
-    const contextLines = DIFF_CONTEXT_LINES;
 
-    if (lines.length <= contextLines * 2) {
+    if (lines.length <= DIFF_CONTEXT_LINES * 2) {
       return diff;
     }
 
-    const header = lines.slice(0, contextLines).join('\n');
-    const footer = lines.slice(-contextLines).join('\n');
-    const omittedLines = lines.length - contextLines * 2;
+    const header = lines.slice(0, DIFF_CONTEXT_LINES).join('\n');
+    const footer = lines.slice(-DIFF_CONTEXT_LINES).join('\n');
 
-    return `${header}\n\n... [已省略 ${omittedLines} 行變更] ...\n\n${footer}`;
+    return `${header}\n\n... [已省略 ${lines.length - DIFF_CONTEXT_LINES * 2} 行變更] ...\n\n${footer}`;
   }
 
   /**
    * 推送到遠端
    */
-  static push(branch) {
+  static async push(branch) {
     try {
-      execSync(`git push -u origin ${branch}`, { stdio: 'inherit' });
+      execSync(`git push -u origin ${branch}`, {
+        stdio: ['ignore', 'inherit', 'pipe'],
+        encoding: 'utf-8',
+      });
       return true;
     } catch (error) {
-      throw new Error(`推送失敗: ${error.message}`);
+      const errMsg = (error.stderr || error.message || '').toString();
+      const is403 = errMsg.includes('403') || errMsg.includes('Write access') || errMsg.includes('write access');
+      if (is403) {
+        throw new PRError(
+          '推送失敗：git 沒有寫入權限',
+          'GIT_PUSH_FORBIDDEN',
+          [
+            '建議執行以下指令讓 git 使用 gh 的認證:',
+            '  gh auth setup-git',
+            '或者改用 SSH 權限:',
+            '  git remote set-url origin git@github.com:<org>/<repo>.git',
+          ],
+          `git push -u origin ${branch}`
+        );
+      }
+      throw new PRError(
+        '推送失敗',
+        'GIT_PUSH_FAILED',
+        ['檢查是否有推送權限', '檢查遠端分支是否有衝突', '檢查網路連接'],
+        `git push -u origin ${branch}`
+      );
     }
   }
 
   /**
    * 同步遠端資訊
    */
-  static fetch() {
+  static async fetch() {
     try {
       execSync('git fetch origin', { stdio: 'ignore' });
       return true;
@@ -187,20 +226,64 @@ export class GitOperations {
   /**
    * 獲取變更統計
    */
-  static getChangeStats(baseBranch, headBranch) {
+  static getChangeStats(baseBranch, headBranch, useRemoteHead = false) {
     try {
-      const stats = execSync(`git diff --shortstat origin/${baseBranch}...${headBranch}`, {
+      const headRef = useRemoteHead ? `origin/${headBranch}` : headBranch;
+      const stats = execSync(`git diff --shortstat origin/${baseBranch}...${headRef}`, {
         encoding: 'utf-8',
       }).trim();
 
       const filesChanged = execSync(
-        `git diff --name-only origin/${baseBranch}...${headBranch} | wc -l`,
+        `git diff --name-only origin/${baseBranch}...${headRef} | wc -l`,
         { encoding: 'utf-8' }
       ).trim();
 
       return { stats, filesChanged: parseInt(filesChanged, 10) };
     } catch (error) {
       return { stats: '無法獲取統計', filesChanged: 0 };
+    }
+  }
+
+  /**
+   * 獲取當前用戶資訊
+   */
+  static getCurrentUser() {
+    try {
+      const email = execSync('git config user.email', { encoding: 'utf-8' }).trim();
+      const name = execSync('git config user.name', { encoding: 'utf-8' }).trim();
+      let githubUser = null;
+
+      try {
+        githubUser = execSync('gh api user --jq .login', {
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }).trim();
+      } catch {
+        // GitHub CLI 未認證或未安裝
+      }
+
+      return { email, name, githubUser };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * 獲取 repository owner
+   */
+  static getRepoOwner() {
+    try {
+      const remoteUrl = execSync('git config --get remote.origin.url', {
+        encoding: 'utf-8',
+      }).trim();
+
+      const httpsMatch = remoteUrl.match(/github\.com[/:]([^/]+)\//);
+      const sshMatch = remoteUrl.match(/github\.com:([^/]+)\//);
+
+      const owner = httpsMatch?.[1] || sshMatch?.[1];
+      return owner || null;
+    } catch (error) {
+      return null;
     }
   }
 }

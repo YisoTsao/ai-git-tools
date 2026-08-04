@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync, existsSync } from 'fs';
-import { log } from '../utils/helpers.js';
-import { colors } from '../utils/constants.js';
+import { log } from '../../utils/logger.js';
+import { colors } from '../../utils/constants.js';
 
 /**
  * GitHub API 操作封裝

@@ -1,13 +1,13 @@
 import { createInterface } from 'readline';
 import { execSync } from 'child_process';
-import { GitOperations } from './git-operations.js';
+import { GitOperations } from '../../core/git-operations.js';
 import { GitHubAPI } from './github-api.js';
 import { AIAnalyzer } from '../ai/code-analyzer.js';
 import { LabelAnalyzer } from '../ai/label-analyzer.js';
 import { ReviewerSelector } from '../reviewers/reviewer-selector.js';
-import { Logger } from '../ui/logger.js';
-import { PRError, log } from '../utils/helpers.js';
-import { CONSTANTS, colors } from '../utils/constants.js';
+import { Logger, log } from '../../utils/logger.js';
+import { PRError } from '../../utils/helpers.js';
+import { CONSTANTS, colors } from '../../utils/constants.js';
 
 /**
  * PR 工作流程編排
@@ -15,7 +15,7 @@ import { CONSTANTS, colors } from '../utils/constants.js';
 export class PRWorkflow {
   constructor(config) {
     this.config = config;
-    this.git = new GitOperations();
+    this.git = GitOperations;
     this.github = new GitHubAPI(); // 自動從 git remote 偵測組織名稱
     this.ai = new AIAnalyzer({ model: config.ai.model });
     this.labelAnalyzer = new LabelAnalyzer();
