@@ -15,6 +15,7 @@ import { commitAllCommand } from '../src/commands/commit-all.js';
 import { prCommand } from '../src/commands/pr.js';
 import { initCommand } from '../src/commands/init.js';
 import { usageCommand } from '../src/commands/usage.js';
+import { modelInfoCommand } from '../src/commands/model-info.js';
 import { registerCommand } from '../src/utils/cli-helpers.js';
 
 // 讀取 package.json 獲取版本號
@@ -74,5 +75,12 @@ registerCommand(program, 'usage', '查看組織 GitHub Copilot 使用狀態與�
   { flags: '--export <file>', description: '匯出為 CSV 檔案（例如 usage.csv）' },
   { flags: '--json', description: '以 JSON 格式輸出完整資料' },
 ], usageCommand);
+
+// Model Info 命令
+registerCommand(program, 'model-info', '查看目前可用的 AI 模型資訊', [
+  { flags: '--json', description: '以 JSON 格式輸出完整模型資料' },
+  { flags: '--filter <keyword>', description: '依模型名稱或描述關鍵字過濾' },
+  { flags: '--model <model>', description: '查詢單一模型的詳細資訊' },
+], modelInfoCommand);
 
 program.parse();
