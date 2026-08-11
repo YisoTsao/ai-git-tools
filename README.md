@@ -51,6 +51,27 @@ npm install --save-dev ai-git-tools
 }
 ```
 
+### 本機直接使用（尚未發布到 npm）
+
+如果你想在套件正式發布到 npm 前，直接從本機原始碼執行：
+
+```bash
+# 方式一：使用 npm link 將本機套件連結到全域
+npm link
+npx ai-git-tools model-info
+
+# 方式二：直接使用 node 執行 bin/cli.js
+node bin/cli.js model-info
+```
+
+其他命令也適用相同方式，例如：
+
+```bash
+npx ai-git-tools init
+npx ai-git-tools commit
+npx ai-git-tools pr
+```
+
 ## 🚀 快速開始
 
 ### 1. 初始化配置
@@ -417,18 +438,3 @@ A: 目前遵循 Conventional Commits 規範。未來版本會支援自訂格式�
 
 A: 支援。工具會分析整個倉庫的變更。
 
-## 📝 授權
-
-MIT License
-
-## 🤝 貢獻
-
-歡迎提交 Issue 和 Pull Request！
-
-## 📧 聯絡
-
-有問題或建議？歡迎[提交 Issue](https://github.com/YisoTsao/ai-git-tools/issues)
-
----
-
-Made with ❤️ by AI Git Tools Team
