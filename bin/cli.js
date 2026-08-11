@@ -81,6 +81,7 @@ registerCommand(program, 'model-info', '查看目前可用的 AI 模型資訊', 
   { flags: '--json', description: '以 JSON 格式輸出完整模型資料' },
   { flags: '--filter <keyword>', description: '依模型名稱或描述關鍵字過濾' },
   { flags: '--model <model>', description: '查詢單一模型的詳細資訊' },
+  { flags: '--no-cache', description: '忽略快取，強制重新連線 Copilot 取得最新模型清單' },
 ], modelInfoCommand);
 
 program.parse();

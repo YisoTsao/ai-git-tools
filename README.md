@@ -220,6 +220,31 @@ npx ai-git-tools workflow
 npx ai-git-tools wf --preview
 \`\`\`
 
+### \`ai-git-tools model-info\`
+
+查詢目前 GitHub Copilot SDK 支援的 AI 模型清單與詳細資訊
+
+\`\`\`bash
+npx ai-git-tools model-info [選項]
+
+選項:
+  --json                       以 JSON 格式輸出完整模型資料
+  --filter <keyword>           依模型名稱、供應商或描述關鍵字過濾
+  --model <model>              查詢單一模型的詳細資訊
+  --no-cache                   忽略快取，強制重新連線 Copilot 取得最新資料
+\`\`\`
+
+**範例：**
+
+\`\`\`bash
+npx ai-git-tools model-info
+npx ai-git-tools model-info --model gpt-4.1
+npx ai-git-tools model-info --filter claude
+npx ai-git-tools model-info --json
+\`\`\`
+
+> 第一次執行會連線到 Copilot CLI 取得模型清單，可能需要數秒鐘；後續預設使用 24 小時快取。
+
 ## ⚙️ 配置
 
 配置檔案範例（\`.ai-git-config.js\`）：
