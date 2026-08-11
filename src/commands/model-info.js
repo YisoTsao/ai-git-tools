@@ -78,18 +78,27 @@ function printModel(model) {
   console.log(` 狀態：        ${policyStateLabel(model.policy?.state)}`);
   console.log(` 能力：        ${formatCapabilities(model.capabilities?.supports)}`);
   if (billing && billing.batch_size > 0) {
-    const hasAnyPrice = billing.input_price > 0 || billing.output_price > 0 || billing.cache_price > 0;
+    const hasAnyPrice =
+      billing.input_price > 0 || billing.output_price > 0 || billing.cache_price > 0;
     if (hasAnyPrice) {
       console.log(` 價格（預估）:`);
-      console.log(`   輸入：      ${formatPrice(billing.input_price, billing.batch_size)} / ${formatTokenCount(billing.batch_size)} tokens`);
-      console.log(`   輸出：      ${formatPrice(billing.output_price, billing.batch_size)} / ${formatTokenCount(billing.batch_size)} tokens`);
+      console.log(
+        `   輸入：      ${formatPrice(billing.input_price, billing.batch_size)} / ${formatTokenCount(billing.batch_size)} tokens`
+      );
+      console.log(
+        `   輸出：      ${formatPrice(billing.output_price, billing.batch_size)} / ${formatTokenCount(billing.batch_size)} tokens`
+      );
       if (billing.cache_price !== undefined) {
-        console.log(`   快取：      ${formatPrice(billing.cache_price, billing.batch_size)} / ${formatTokenCount(billing.batch_size)} tokens`);
+        console.log(
+          `   快取：      ${formatPrice(billing.cache_price, billing.batch_size)} / ${formatTokenCount(billing.batch_size)} tokens`
+        );
       }
     }
   }
   if (model.supportedReasoningEfforts && model.supportedReasoningEfforts.length > 0) {
-    console.log(` Reasoning：   ${model.supportedReasoningEfforts.join('、')}（預設：${model.defaultReasoningEffort || '—'}）`);
+    console.log(
+      ` Reasoning：   ${model.supportedReasoningEfforts.join('、')}（預設：${model.defaultReasoningEffort || '—'}）`
+    );
   }
   if (model.notes) {
     console.log(` 備註：        ${model.notes}`);
@@ -159,7 +168,7 @@ export async function modelInfoCommand(options) {
     const model = getModelById(modelId, models);
     if (!model) {
       logger.error(`找不到模型「${modelId}」`);
-      logger.info(`可用模型：${models.map((m) => m.id).join('、')}`);
+      logger.info(`可用模型：${models.map(m => m.id).join('、')}`);
       process.exit(1);
     }
     printModel(model);

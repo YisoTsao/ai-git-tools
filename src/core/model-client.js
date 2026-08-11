@@ -94,6 +94,7 @@ export async function fetchCopilotModels({ noCache = false, fallbackToCache = tr
   try {
     await client.start();
     const models = await client.listModels();
+
     writeCache(models);
     return models;
   } catch (error) {
