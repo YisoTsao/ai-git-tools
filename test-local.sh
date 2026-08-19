@@ -76,7 +76,7 @@ echo -e "${GREEN}✅ Git 倉庫已初始化${NC}"
 # 測試 3: 測試 init 命令
 echo ""
 echo "🧪 測試 3: 測試 init 命令"
-echo "model: 'gpt-4.1'" > .ai-git-config.js
+echo "model: 'claude-haiku-4.5'" > .ai-git-config.js
 if [ -f .ai-git-config.js ]; then
     echo -e "${GREEN}✅ 配置檔已創建${NC}"
 else

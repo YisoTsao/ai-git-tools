@@ -10,7 +10,7 @@
 export default {
   // AI 設定
   ai: {
-    model: 'gpt-4.1', // AI 模型：gpt-4.1, claude-haiku-4.5, claude-sonnet-4.5
+    model: 'claude-haiku-4.5', // AI 模型：claude-haiku-4.5
     maxDiffLength: 8000, // 最大 diff 長度（字元）- 太小會導致 AI 看不到完整變更
     maxRetries: 3, // API 失敗時的最大重試次數
   },

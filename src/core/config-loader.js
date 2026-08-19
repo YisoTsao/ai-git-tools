@@ -12,7 +12,7 @@ import { resolve } from 'path';
  */
 const DEFAULT_CONFIG = {
   ai: {
-    model: 'gpt-4.1',
+    model: 'claude-haiku-4.5',
     maxDiffLength: 8000,
     maxRetries: 3,
   },
@@ -193,7 +193,7 @@ function showHelp() {
 
 選項：
   --base <branch>      指定目標分支 (預設: 使用配置檔的 defaultBase 或自動偵測)
-  --model <model>      指定 AI 模型 (預設: gpt-4.1)
+  --model <model>      指定 AI 模型 (預設: claude-haiku-4.5)
   --preview            僅預覽 PR 內容，不實際創建
   --no-confirm         跳過確認直接創建
   --auto-labels        自動添加 Labels (預設啟用)

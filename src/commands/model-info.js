@@ -12,6 +12,7 @@ import {
   filterModels,
   formatPrice,
   formatTokenCount,
+  getTokenPrices,
 } from '../data/copilot-models.js';
 
 const logger = new Logger();
@@ -38,6 +39,10 @@ function formatCapabilities(supports = {}) {
   if (supports.reasoningEffort || supports.reasoning_effort) caps.push('reasoning');
   if (supports.streaming) caps.push('streaming');
   if (supports.parallel_tool_calls) caps.push('parallel-tools');
+  if (supports.structured_outputs) caps.push('structured-output');
+  if (supports.adaptive_thinking && supports.adaptive_thinking !== 'unsupported') {
+    caps.push('adaptive-thinking');
+  }
   return caps.length > 0 ? caps.join('、') : '—';
 }
 
@@ -64,33 +69,49 @@ function policyStateLabel(state) {
  * @param {object} model
  */
 function printModel(model) {
-  const billing = model.billing?.token_prices;
+  const billing = model.tokenPrices || getTokenPrices(model.billing);
+  const capabilities = model.capabilities || {};
 
   console.log(`\n ${logger.colors?.cyan ?? ''}${model.id}${logger.colors?.reset ?? ''}`);
   console.log(' ─────────────────────────────────────────────────────────────');
   console.log(` 名稱：        ${model.name}`);
   console.log(` 供應商：      ${model.provider}`);
+  console.log(` 模型家族：    ${capabilities.family || '—'}`);
+  console.log(` 模型類型：    ${capabilities.type || '—'}`);
+  console.log(` Tokenizer：   ${capabilities.tokenizer || '—'}`);
+  console.log(` 模型分類：    ${model.modelPickerCategory || '—'}`);
+  console.log(` 價格分類：    ${model.modelPickerPriceCategory || '—'}`);
   console.log(` 描述：        ${model.description}`);
   console.log(` 上下文：      ${model.contextWindow}`);
   console.log(` 最大輸出：    ${model.maxOutputTokens}`);
   console.log(` 建議用途：    ${formatRecommendedFor(model.recommendedFor)}`);
   console.log(` 速度：        ${model.speed}`);
   console.log(` 狀態：        ${policyStateLabel(model.policy?.state)}`);
-  console.log(` 能力：        ${formatCapabilities(model.capabilities?.supports)}`);
+  console.log(` 能力：        ${formatCapabilities(capabilities.supports)}`);
   if (billing && billing.batch_size > 0) {
     const hasAnyPrice =
       billing.input_price > 0 || billing.output_price > 0 || billing.cache_price > 0;
     if (hasAnyPrice) {
       console.log(` 價格（預估）:`);
       console.log(
-        `   輸入：      ${formatPrice(billing.input_price, billing.batch_size)} / ${formatTokenCount(billing.batch_size)} tokens`
+        `   輸入：      ${formatPrice(billing.input_price, billing.batch_size, billing.price_scale)} / ${formatTokenCount(billing.batch_size)} tokens`
       );
       console.log(
-        `   輸出：      ${formatPrice(billing.output_price, billing.batch_size)} / ${formatTokenCount(billing.batch_size)} tokens`
+        `   輸出：      ${formatPrice(billing.output_price, billing.batch_size, billing.price_scale)} / ${formatTokenCount(billing.batch_size)} tokens`
       );
       if (billing.cache_price !== undefined) {
         console.log(
-          `   快取：      ${formatPrice(billing.cache_price, billing.batch_size)} / ${formatTokenCount(billing.batch_size)} tokens`
+          `   快取：      ${formatPrice(billing.cache_price, billing.batch_size, billing.price_scale)} / ${formatTokenCount(billing.batch_size)} tokens`
+        );
+      }
+      if (billing.cache_read_price !== undefined) {
+        console.log(
+          `   快取讀取：  ${formatPrice(billing.cache_read_price, billing.batch_size, billing.price_scale)} / ${formatTokenCount(billing.batch_size)} tokens`
+        );
+      }
+      if (billing.cache_write_price !== undefined) {
+        console.log(
+          `   快取寫入：  ${formatPrice(billing.cache_write_price, billing.batch_size, billing.price_scale)} / ${formatTokenCount(billing.batch_size)} tokens`
         );
       }
     }

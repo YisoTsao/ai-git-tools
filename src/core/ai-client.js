@@ -29,7 +29,7 @@ export class AIClient {
   /**
    * 發送 prompt 並等待回應（帶重試機制和超時保護）
    */
-  static async sendAndWait(prompt, model = 'gpt-4.1', maxRetries = 3, timeout = 150000) {
+  static async sendAndWait(prompt, model = 'claude-haiku-4.5', maxRetries = 3, timeout = 150000) {
     let lastError = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {

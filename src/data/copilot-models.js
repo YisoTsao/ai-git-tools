@@ -13,6 +13,7 @@ const MODEL_ENHANCEMENTS = {};
 export function inferProvider(modelId) {
   if (modelId.startsWith('claude')) return 'Anthropic';
   if (modelId.startsWith('gpt')) return 'OpenAI';
+  if (modelId.startsWith('gemini')) return 'Google';
   return 'Unknown';
 }
 
@@ -45,6 +46,30 @@ export function getModelEnhancement(modelId) {
 }
 
 /**
+ * 正規化 Copilot SDK 的價格欄位
+ * @param {object} billing
+ * @returns {object | null}
+ */
+export function getTokenPrices(billing = {}) {
+  const prices = billing.tokenPrices || billing.token_prices;
+  if (!prices) return null;
+
+  const isCurrentFormat = Boolean(billing.tokenPrices);
+  return {
+    input_price: prices.inputPrice ?? prices.input_price,
+    output_price: prices.outputPrice ?? prices.output_price,
+    cache_price: prices.cachePrice ?? prices.cache_price,
+    cache_read_price: prices.cacheReadPrice ?? prices.cache_read_price,
+    cache_write_price: prices.cacheWritePrice ?? prices.cache_write_price,
+    batch_size: prices.batchSize ?? prices.batch_size,
+    context_max: prices.contextMax ?? prices.context_max,
+    max_prompt_tokens: prices.maxPromptTokens ?? prices.max_prompt_tokens,
+    long_context: prices.longContext ?? prices.long_context,
+    price_scale: isCurrentFormat ? 'cents' : 'sdk',
+  };
+}
+
+/**
  * 合併 SDK 模型資料與本機增強資料
  * @param {object} sdkModel
  * @returns {object}
@@ -62,6 +87,7 @@ export function enrichModel(sdkModel) {
     notes: enhancement.notes,
     contextWindow: formatTokenCount(limits.max_context_window_tokens),
     maxOutputTokens: formatTokenCount(limits.max_output_tokens),
+    tokenPrices: getTokenPrices(sdkModel.billing),
   };
 }
 
@@ -69,13 +95,13 @@ export function enrichModel(sdkModel) {
  * 格式化價格（將 SDK 內部單位轉換為美元 / 1M tokens）
  * @param {number} price
  * @param {number} batchSize
+ * @param {'sdk' | 'cents'} priceScale
  * @returns {string}
  */
-export function formatPrice(price, batchSize) {
+export function formatPrice(price, batchSize, priceScale = 'sdk') {
   if (price === undefined || price === null) return '—';
   if (!batchSize || batchSize === 0 || price === 0) return '—';
-  // SDK 內部單位為 10^-11 美元 / batch_size tokens
-  const dollars = price / 100_000_000_000;
+  const dollars = priceScale === 'cents' ? price / 100 : price / 100_000_000_000;
   return `$${dollars.toFixed(2)}`;
 }
 

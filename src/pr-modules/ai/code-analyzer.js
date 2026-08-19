@@ -18,7 +18,7 @@ const AI_TIMEOUT_MS = 150000;
  */
 export class AIAnalyzer {
   constructor(config = {}) {
-    this.model = config.model || 'gpt-4.1';
+    this.model = config.model || 'claude-haiku-4.5';
     this._client = null; // 複用同一個 CopilotClient，避免重複啟動子程序
   }
 

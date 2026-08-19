@@ -238,7 +238,7 @@ npx ai-git-tools model-info [選項]
 
 \`\`\`bash
 npx ai-git-tools model-info
-npx ai-git-tools model-info --model gpt-4.1
+npx ai-git-tools model-info --model claude-haiku-4.5
 npx ai-git-tools model-info --filter claude
 npx ai-git-tools model-info --json
 \`\`\`
@@ -253,7 +253,7 @@ npx ai-git-tools model-info --json
 export default {
   // AI 設定
   ai: {
-    model: 'gpt-4.1', // AI 模型
+    model: 'claude-haiku-4.5', // AI 模型
     maxDiffLength: 8000, // 最大 diff 長度
     maxRetries: 3, // 失敗重試次數
   },
@@ -449,7 +449,7 @@ A: 需要。本工具使用 GitHub Copilot SDK，需要有 GitHub Copilot 訂閱
 
 ### Q: 可以使用其他 AI 模型嗎？
 
-A: 可以。支援 GPT-4.1、Claude Haiku 4.5、Claude Sonnet 4.5 等模型，可在配置檔中設定。
+A: 可以。支援Claude Haiku 4.5、Claude Sonnet 4.5 等模型，可在配置檔中設定。
 
 ### Q: 配置檔一定要放在專案根目錄嗎？
 
