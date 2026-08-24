@@ -245,6 +245,162 @@ npx ai-git-tools model-info --json
 
 > 第一次執行會連線到 Copilot CLI 取得模型清單，可能需要數秒鐘；後續預設使用 24 小時快取。
 
+### `ai-git-tools redmine-update`
+
+分析目前 Git branch 的程式變更，依照指定的 Redmine Issue 個別產生開發更新內容，並在確認後更新 Issue 的狀態與筆記。
+
+> 注意：npm 套件不會也不應該保存你的 Redmine API key。npm 上發布的是讀取環境變數的程式碼；每位使用者都要在自己的本機或 CI 執行環境設定變數。
+
+#### Redmine 設定
+
+請先在 Redmine 管理介面啟用 REST API，並從個人帳號頁面建立具備 Issue 讀寫權限的 API key。API key 只放在環境變數，不要放在 CLI 參數、設定檔或 Git。
+
+不同 shell 的設定語法如下。請只選擇符合你目前終端機的區塊執行：
+
+**bash / zsh（macOS、Linux 常見）**
+
+```bash
+export REDMINE_URL="https://redmine.example.com"
+export REDMINE_API_KEY="你的 Redmine API key"
+
+# 只確認是否已設定，不顯示 key 內容
+test -n "$REDMINE_URL" && echo "REDMINE_URL 已設定"
+test -n "$REDMINE_API_KEY" && echo "REDMINE_API_KEY 已設定"
+```
+
+**fish**
+
+```fish
+set -x REDMINE_URL "https://redmine.example.com"
+set -x REDMINE_API_KEY "你的 Redmine API key"
+
+test -n "$REDMINE_URL"; and echo "REDMINE_URL 已設定"
+test -n "$REDMINE_API_KEY"; and echo "REDMINE_API_KEY 已設定"
+```
+
+**PowerShell**
+
+```powershell
+$env:REDMINE_URL = "https://redmine.example.com"
+$env:REDMINE_API_KEY = "你的 Redmine API key"
+
+if ($env:REDMINE_URL) { Write-Output "REDMINE_URL 已設定" }
+if ($env:REDMINE_API_KEY) { Write-Output "REDMINE_API_KEY 已設定" }
+```
+
+**Windows Command Prompt（cmd）**
+
+```bat
+set REDMINE_URL=https://redmine.example.com
+set REDMINE_API_KEY=你的 Redmine API key
+
+if defined REDMINE_URL echo REDMINE_URL 已設定
+if defined REDMINE_API_KEY echo REDMINE_API_KEY 已設定
+```
+
+完成環境變數設定後，`npx` 的使用方式完全相同：
+
+```text
+npx ai-git-tools redmine-update --issue 124 --preview --output redmine-update.json
+```
+
+環境變數只對目前的 shell 工作階段有效。若重新開啟終端機後不想重新設定，請使用各 shell 的啟動設定檔或作業系統的 Secret Manager；不要把真實 API key 提交到 Git。
+
+也可以將專案內的 `.env.example` 複製成 `.env` 作為設定範本；目前 CLI 直接讀取 process environment，因此 shell 必須先載入該檔案：
+
+```bash
+cp .env.example .env
+# 編輯 .env 填入實際 URL 與 API key
+set -a
+source .env
+set +a
+```
+
+全域安裝或使用 `npx` 時，環境變數仍然設定在「執行命令的 shell」中：
+
+```bash
+npm install -g ai-git-tools
+export REDMINE_URL="https://redmine.example.com"
+export REDMINE_API_KEY="你的 Redmine API key"
+ai-git-tools redmine-update --issue 124 --preview --output redmine-update.json
+```
+
+發布前可用以下指令確認 `.env.example` 會被包含在 npm 套件中，但不會包含 `.env`：
+
+```bash
+npm pack --dry-run
+```
+
+#### Preview 與 Apply
+
+沒有 `--pr` 時，工具會比較目前 branch 與 `origin` 上依 branch 名稱版本號排序後最新的 `release-*` branch；`--base` 可指定其他比較基準。每個 `--issue` 都會先獨立讀取 Redmine 的 subject、description、status、tracker、custom fields 與 allowed statuses，再與共用 Git evidence 分開分析。
+
+```bash
+ai-git-tools redmine-update \
+  --issue 124 \
+  --issue 125 \
+  --issue 126 \
+  --issue 127 \
+  --preview \
+  --output redmine-update.json
+
+# 套用已檢查的草稿，不重新呼叫 AI
+ai-git-tools redmine-update --apply --from redmine-update.json
+```
+
+`--pr <number>` 是可選的補充 evidence，會加入 PR title、body、URL、merge state、commits 與 changed files；沒有 PR 仍可完整分析本機 Git diff。沒有 PR 時，工具不會自動推論已 merge、已部署或必須關閉 Issue。
+
+執行過程會顯示目前階段，例如 Redmine 設定、Git evidence、PR 搜尋、每個 Issue 讀取、Copilot 分析與草稿產生進度。未指定 `--pr` 時，工具會依目前 branch 自動尋找對應的 GitHub PR；找不到時只省略 PR 資訊，不會影響本機 Git 分析。
+
+notes 的 `### Git` 區塊會將 Branch 與 Base 連到對應的 GitHub branch；找到 PR 時也會顯示可點擊的 PR URL，找不到 PR 時不會顯示 PR 欄位。
+
+Preview 會以色彩分開顯示每個 Issue 的開發內容、程式修改重點、API 變更、重要技術細節、修改檔案與實際 note。工具會從 Redmine API 找到 `已解決` 狀態並直接套用，不顯示互動式狀態選單。
+
+原始 Issue description 會保留原始內容，供未來其它內容使用。AI 可產生多張流程圖，每張流程圖都有穩定的用途 ID，流程圖會放在 notes（公司 Redmine 已支援 notes Mermaid）。更新摘要會使用 Markdown 標題、項目符號與雙反引號標示程式路徑、API path、function 與 class。只有找到明確測試或驗證證據時才會加入驗證段落：
+
+```text
+{{mermaid
+flowchart TD
+    A[開始] --> B[處理]
+    B --> C[完成]
+}}
+```
+
+Issue 的基本責任分工如下：`description` 保存原始需求與未來其它內容，`status` 保存目前狀態，`notes` 保存 Git 開發紀錄與 Mermaid 流程圖。
+
+當 preview 套用時，工具會直接將狀態設為 `已解決`，並同步將完成百分比設為 `100%`、完成日期設為執行當天，依欄位名稱找到 `程式碼更版進度` custom field，勾選測試機選項 `測`。custom field ID 會從 Issue API 動態取得，不會寫死公司 Redmine 的 ID。
+
+同一個 Issue 若已經有先前的 notes，後續再次執行更新仍會新增一筆新的 Redmine journal，不會因為已有 notes 而略過；只有 Issue 的需求內容或狀態在產生草稿後被其他人修改時，才會停下來要求重新確認。
+
+AI 產出的 notes 會固定整理成以下架構：
+
+```markdown
+## 開發內容
+
+### 需求說明
+一句話說明這次為什麼修改。
+
+### 實作內容
+- 實際完成事項
+- 實際完成事項
+- 實際完成事項
+
+### 行為規則
+| 情境 | 行為 |
+|---|---|
+| ... | ... |
+
+### 影響範圍
+受影響的功能、API、頁面或模組。
+
+### 待確認
+- [ ] AI 無法確認的項目
+```
+
+實作內容最多顯示 6 個項目；沒有待確認事項時不會建立空的 `待確認` 區塊。Git 與流程圖區塊會維持既有格式。
+
+所有 Copilot AI 回應會在程式內統一轉換為台灣繁體中文，包含 Redmine notes、需求說明、實作內容、行為規則、影響範圍與 Mermaid 文字；不依賴模型自行遵守語言設定。
+
 ## ⚙️ 配置
 
 配置檔案範例（\`.ai-git-config.js\`）：
@@ -321,7 +477,7 @@ github: {
 
 ## 🔧 環境需求
 
-- **Node.js** >= 18.0.0
+- **Node.js** >= 22.12.0
 - **Git** 已安裝並設定
 - **GitHub CLI** (用於 PR 功能)
   \`\`\`bash

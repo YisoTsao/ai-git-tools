@@ -15,3 +15,5 @@ docs/
 ai-auto-dev/node_modules/
 .agents
 openspec
+.env.*
+!.env.example

@@ -4,6 +4,7 @@
  */
 
 import { handleError } from './helpers.js';
+import { Option } from 'commander';
 
 /**
  * 註冊一個 CLI 命令，統一包裝 try/catch 與退出碼
@@ -17,6 +18,13 @@ export function registerCommand(program, name, description, options = [], action
   const command = program.command(name).description(description);
 
   for (const option of options) {
+    if (option.argParser) {
+      const commandOption = new Option(option.flags, option.description).argParser(option.argParser);
+      if (option.defaultValue !== undefined) commandOption.default(option.defaultValue);
+      command.addOption(commandOption);
+      continue;
+    }
+
     if (option.defaultValue !== undefined) {
       command.option(option.flags, option.description, option.defaultValue);
     } else {

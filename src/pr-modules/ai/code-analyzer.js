@@ -1,5 +1,5 @@
 import { CopilotClient, approveAll } from '@github/copilot-sdk';
-import { CONSTANTS } from '../../utils/constants.js';
+import { AIClient } from '../../core/ai-client.js';
 import { log } from '../../utils/logger.js';
 import { isCopilotAuthError } from '../../utils/helpers.js';
 import {
@@ -26,6 +26,7 @@ export class AIAnalyzer {
    * 取得（或建立）共用的 CopilotClient
    */
   async _getOrCreateClient() {
+    AIClient.assertSupportedNodeVersion();
     if (!this._client) {
       this._client = new CopilotClient();
     }

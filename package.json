@@ -1,11 +1,11 @@
 {
   "name": "ai-git-tools",
-  "version": "2.1.1",
+  "version": "2.1.13",
   "description": "AI-powered Git automation tools for commit messages and PR generation",
   "main": "src/index.js",
   "type": "module",
   "bin": {
-    "ai-git-tools": "./bin/cli.js"
+    "ai-git-tools": "bin/cli.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js",
@@ -27,7 +27,7 @@
   "author": "Yiso Tsao <yiso05255@gmail.com>",
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "files": [
     "bin/",
@@ -35,6 +35,7 @@
     "templates/",
     "README.md",
     "README.zh-TW.md",
+    ".env.example",
     "LICENSE",
     "CHANGELOG.md"
   ],
@@ -43,6 +44,7 @@
     "chalk": "^5.3.0",
     "commander": "^12.0.0",
     "inquirer": "^9.2.0",
+    "opencc-js": "^1.4.2",
     "ora": "^8.0.1"
   },
   "devDependencies": {

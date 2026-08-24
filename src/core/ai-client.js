@@ -4,8 +4,77 @@
  */
 
 import { CopilotClient, approveAll } from '@github/copilot-sdk';
+import { toTraditionalChinese } from '../utils/traditional-chinese.js';
+
+function extractJsonCandidates(content) {
+  const candidates = [];
+
+  for (let start = 0; start < content.length; start += 1) {
+    if (content[start] !== '{' && content[start] !== '[') continue;
+
+    const expectedClosers = [];
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < content.length; index += 1) {
+      const character = content[index];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (character === '\\') {
+          escaped = true;
+        } else if (character === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (character === '"') {
+        inString = true;
+      } else if (character === '{') {
+        expectedClosers.push('}');
+      } else if (character === '[') {
+        expectedClosers.push(']');
+      } else if (character === '}' || character === ']') {
+        if (expectedClosers.pop() !== character) break;
+        if (expectedClosers.length === 0) {
+          candidates.push(content.slice(start, index + 1));
+          break;
+        }
+      }
+    }
+  }
+
+  return candidates;
+}
 
 export class AIClient {
+  /**
+   * 判斷 Node.js 是否符合 Copilot SDK 的版本需求
+   * @param {string} version
+   * @returns {boolean}
+   */
+  static isSupportedNodeVersion(version = process.versions.node) {
+    const match = String(version).match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (!match) return false;
+
+    const major = Number(match[1]);
+    const minor = Number(match[2]);
+    return (major === 20 && minor >= 19) || (major >= 22 && (major > 22 || minor >= 12));
+  }
+
+  /**
+   * 確認 Node.js 符合 Copilot SDK 的版本需求
+   */
+  static assertSupportedNodeVersion() {
+    if (!AIClient.isSupportedNodeVersion()) {
+      throw new Error(
+        `目前 Node.js ${process.versions.node} 不符合 Copilot SDK 需求。請升級至 Node.js 20.19+ 或 22.12+。`
+      );
+    }
+  }
+
   /**
    * 檢測是否為 Copilot 授權相關的錯誤
    */
@@ -30,6 +99,7 @@ export class AIClient {
    * 發送 prompt 並等待回應（帶重試機制和超時保護）
    */
   static async sendAndWait(prompt, model = 'claude-haiku-4.5', maxRetries = 3, timeout = 150000) {
+    AIClient.assertSupportedNodeVersion();
     let lastError = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -49,7 +119,7 @@ export class AIClient {
         const response = await Promise.race([responsePromise, timeoutPromise]);
 
         const content = response?.data?.content || '';
-        return content.trim();
+        return toTraditionalChinese(content.trim());
       } catch (error) {
         lastError = error;
         if (attempt < maxRetries) {
@@ -78,7 +148,7 @@ export class AIClient {
    */
   static parseJSON(content) {
     // 移除可能的 markdown code block 標記
-    const jsonContent = content
+    const jsonContent = String(content || '')
       .replace(/```json\n?/g, '')
       .replace(/```\n?/g, '')
       .trim();
@@ -86,6 +156,14 @@ export class AIClient {
     try {
       return JSON.parse(jsonContent);
     } catch (error) {
+      for (const candidate of extractJsonCandidates(jsonContent)) {
+        try {
+          return JSON.parse(candidate);
+        } catch {
+          continue;
+        }
+      }
+
       throw new Error(`無法解析 AI 回應為 JSON: ${error.message}`);
     }
   }

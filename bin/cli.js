@@ -16,6 +16,7 @@ import { prCommand } from '../src/commands/pr.js';
 import { initCommand } from '../src/commands/init.js';
 import { usageCommand } from '../src/commands/usage.js';
 import { modelInfoCommand } from '../src/commands/model-info.js';
+import { redmineUpdateCommand } from '../src/commands/redmine-update.js';
 import { registerCommand } from '../src/utils/cli-helpers.js';
 
 // 讀取 package.json 獲取版本號
@@ -83,5 +84,22 @@ registerCommand(program, 'model-info', '查看目前可用的 AI 模型資訊', 
   { flags: '--model <model>', description: '查詢單一模型的詳細資訊' },
   { flags: '--no-cache', description: '忽略快取，強制重新連線 Copilot 取得最新模型清單' },
 ], modelInfoCommand);
+
+// Redmine Issue 更新命令
+registerCommand(program, 'redmine-update', '分析並更新 Redmine Issue 的開發內容', [
+  {
+    flags: '--issue <id>',
+    description: '指定 Redmine Issue ID，可重複使用',
+    argParser: (value, previous = []) => [...previous, value],
+    defaultValue: [],
+  },
+  { flags: '--pr <number>', description: '可選的 GitHub Pull Request 編號' },
+  { flags: '--base <branch>', description: '指定 Git 比較基準 branch' },
+  { flags: '--preview', description: '產生並顯示更新預覽，不修改 Redmine' },
+  { flags: '--output <file>', description: '保存 preview 草稿 JSON' },
+  { flags: '--apply', description: '套用已審核的草稿' },
+  { flags: '--from <file>', description: '指定要套用的 preview 草稿 JSON' },
+  { flags: '--force', description: '強制略過 Issue 狀態或內容衝突檢查' },
+], redmineUpdateCommand);
 
 program.parse();
