@@ -98,7 +98,7 @@ export class AIClient {
   /**
    * 發送 prompt 並等待回應（帶重試機制和超時保護）
    */
-  static async sendAndWait(prompt, model = 'claude-haiku-4.5', maxRetries = 3, timeout = 150000) {
+  static async sendAndWait(prompt, model = 'gpt-5.6-luna', maxRetries = 3, timeout = 150000) {
     AIClient.assertSupportedNodeVersion();
     let lastError = null;
 
@@ -110,13 +110,7 @@ export class AIClient {
           onPermissionRequest: approveAll,
         });
 
-        // 使用 Promise.race 實現超時控制
-        const responsePromise = session.sendAndWait({ prompt });
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error(`AI 請求超時 (${timeout}ms)`)), timeout);
-        });
-
-        const response = await Promise.race([responsePromise, timeoutPromise]);
+        const response = await session.sendAndWait({ prompt }, timeout);
 
         const content = response?.data?.content || '';
         return toTraditionalChinese(content.trim());

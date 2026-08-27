@@ -160,7 +160,7 @@ export async function analyzeIssue({
   issue,
   evidence,
   aiClient = AIClient,
-  model = 'claude-haiku-4.5',
+  model = 'gpt-5.6-luna',
   maxRetries = 3,
 }) {
   const prompt = buildIssueAnalysisPrompt({ issue, evidence });

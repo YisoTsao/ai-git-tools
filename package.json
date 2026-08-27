@@ -1,6 +1,6 @@
 {
   "name": "ai-git-tools",
-  "version": "2.1.13",
+  "version": "2.1.25",
   "description": "AI-powered Git automation tools for commit messages and PR generation",
   "main": "src/index.js",
   "type": "module",
@@ -27,7 +27,7 @@
   "author": "Yiso Tsao <yiso05255@gmail.com>",
   "license": "MIT",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": ">=20.19.0"
   },
   "files": [
     "bin/",

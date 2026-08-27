@@ -147,7 +147,7 @@ npx ai-git-tools commit [選項]
 
 \`\`\`bash
 npx ai-git-tools commit
-npx ai-git-tools commit --model claude-haiku-4.5
+npx ai-git-tools commit --model gpt-5.6-luna
 npx ai-git-tools commit --verbose
 \`\`\`
 
@@ -238,7 +238,7 @@ npx ai-git-tools model-info [選項]
 
 \`\`\`bash
 npx ai-git-tools model-info
-npx ai-git-tools model-info --model claude-haiku-4.5
+npx ai-git-tools model-info --model gpt-5.6-luna
 npx ai-git-tools model-info --filter claude
 npx ai-git-tools model-info --json
 \`\`\`
@@ -409,7 +409,7 @@ AI 產出的 notes 會固定整理成以下架構：
 export default {
   // AI 設定
   ai: {
-    model: 'claude-haiku-4.5', // AI 模型
+    model: 'gpt-5.6-luna', // AI 模型
     maxDiffLength: 8000, // 最大 diff 長度
     maxRetries: 3, // 失敗重試次數
   },
