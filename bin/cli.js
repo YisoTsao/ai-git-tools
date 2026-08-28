@@ -17,6 +17,7 @@ import { initCommand } from '../src/commands/init.js';
 import { usageCommand } from '../src/commands/usage.js';
 import { modelInfoCommand } from '../src/commands/model-info.js';
 import { redmineUpdateCommand } from '../src/commands/redmine-update.js';
+import { redmineSubtasksCommand } from '../src/commands/redmine-subtasks.js';
 import { registerCommand } from '../src/utils/cli-helpers.js';
 
 // 讀取 package.json 獲取版本號
@@ -101,5 +102,24 @@ registerCommand(program, 'redmine-update', '分析並更新 Redmine Issue 的開
   { flags: '--from <file>', description: '指定要套用的 preview 草稿 JSON' },
   { flags: '--force', description: '強制略過 Issue 狀態或內容衝突檢查' },
 ], redmineUpdateCommand);
+
+registerCommand(program, 'redmine-subtasks', '將 Redmine 父 Issue 拆分為可驗收子 Issue', [
+  {
+    flags: '--issue <id>',
+    description: '指定單一 Redmine parent Issue ID',
+    argParser: (value, previous = []) => [...previous, value],
+    defaultValue: [],
+  },
+  { flags: '--scope <scope>', description: '拆分模式：fe（預設）或 be' },
+  { flags: '--module-prefix-hint <prefix>', description: '提示 Backend 子 Issue 模組縮寫，例如 BE' },
+  { flags: '--max-subtasks <number>', description: '限制最多產生的子 Issue 數量（1-12）' },
+  { flags: '--preview', description: '產生預覽，不修改 Redmine' },
+  { flags: '--output <file>', description: '保存 preview 草稿 JSON' },
+  { flags: '--resume <file>', description: '從未完成的 partial draft 繼續產生' },
+  { flags: '--apply', description: '套用已審核的草稿' },
+  { flags: '--from <file>', description: '指定要套用的草稿 JSON' },
+  { flags: '--force', description: '強制略過 parent snapshot conflict' },
+  { flags: '--replace', description: '依 scope 依序覆蓋既有子 Issue，多出的新項目才建立' },
+], redmineSubtasksCommand);
 
 program.parse();

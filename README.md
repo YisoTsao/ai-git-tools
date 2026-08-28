@@ -354,6 +354,52 @@ ai-git-tools redmine-update --apply --from redmine-update.json
 
 notes 的 `### Git` 區塊會將 Branch 與 Base 連到對應的 GitHub branch；找到 PR 時也會顯示可點擊的 PR URL，找不到 PR 時不會顯示 PR 欄位。
 
+#### Backend Redmine 子 Issue 拆分
+
+`redmine-subtasks` 未指定 scope 時預設使用 Frontend v2 拆分；Backend 技術規劃請使用 `--scope be`。Backend 模式會依父 Issue 的工作任務、開發順序、章節、API、資料交易與驗收內容產生只包含來源可證明內容的 JSON 草稿。API endpoint、驗收標準、tracker、priority、工時與日期不會由工具自行猜測。
+
+`--module-prefix-hint` 是 Backend 模式的可選提示，未指定時預設使用 `BE`。子 Issue 會沿用 parent 的 tracker，priority 不強制指定，讓 Redmine 使用專案預設值。
+
+Backend 也支援 `--replace`：只更新帶有本工具 managed marker 的既有子 Issue，依 Redmine 現有順序與新草稿順序配對；新草稿較多時建立多出的項目，舊子 Issue 較多時保留多出的舊項目，不會刪除。
+
+```bash
+# 只讀取 parent、產生預覽並保存草稿
+ai-git-tools redmine-subtasks \
+  --scope be \
+  --issue 18793 \
+  --module-prefix-hint BE \
+  --preview \
+  --output redmine-subtasks.json
+
+# 人工檢查並可直接修改 JSON 後再套用；apply 不會重新呼叫 AI
+ai-git-tools redmine-subtasks \
+  --scope be \
+  --apply \
+  --from redmine-subtasks.json
+```
+
+Frontend 模式會逐一產生每個 detail。若指定 `--output`，每個完成並通過驗證的子任務都會立即寫入 partial draft；中途失敗時，已完成項目仍會保留。partial draft 不可直接 apply，可用 `--resume` 繼續剩餘項目：
+
+```bash
+ai-git-tools redmine-subtasks \
+  --scope fe \
+  --resume redmine-subtasks.json \
+  --preview \
+  --output redmine-subtasks.json
+```
+
+resume 會重新確認 parent 與 outline；已完成的子任務不會再次呼叫 AI，只產生尚未完成的項目。全部完成後，JSON 會標記 `isComplete: true`，才可使用 `--apply --from`。
+
+每個 outline 或 detail 的 AI 請求預設最多等待 300 秒，可在 `.ai-git-config.mjs` 的 `ai.redmineSubtaskTimeout` 覆寫。逾時或 schema 驗證失敗會顯示目前項目與重試原因；不會因為單一 detail 失敗而刪除已保存的 partial draft。
+
+若單一 detail 在重試後仍無法完成，工具會先以 outline 產生最小可審核草稿，標記 `AI detail 未完成` 與待確認事項，再繼續下一個子任務。這類內容需要人工補充後才能視為完整設計；若中途停止，使用同一份 JSON 執行 `--resume` 即可繼續。
+
+每個候選子 Issue 使用 `[模組縮寫-序號] 標題`、`temp_id`、原文章節、範圍（含不在範圍）、原文 API endpoint 與驗收標準。候選間只允許 `precedes` 或 `blocks` relation；所有 child 建立或更新完成並取得真實 ID 後才會建立 relations，最後以帶穩定 marker 的 notes 回寫父 Issue 索引。
+
+apply 前會重新讀取 parent。subject、description、project 或 tracker 已變更時會停止所有 mutation；確認差異後可使用 `--force`，但仍會做 schema、duplicate 與 relation 驗證。重跑會更新同 parent 同 subject 或 managed marker 的既有 child、跳過既有 relation 與索引，不會重複建立。部分 child 或 relation 失敗時保留成功結果，但不寫入不完整的 parent index，也不提供自動 rollback。
+
+通用模式會使用 `POST /issues.json` 建立 child、`PUT /issues/{id}.json` 更新既有 child、`POST /issues/{issue_id}/relations.json` 建立 relation，以及 `PUT /issues/{parent_id}.json` 的 `notes` 寫入索引。它不會改變 parent 的原始 `description`、status 或 done ratio。API key 只從 `REDMINE_API_KEY` 讀取，不會進入 prompt、draft、log 或錯誤訊息；AI 輸出仍必須由人工審核後才能 apply。
+
 Preview 會以色彩分開顯示每個 Issue 的開發內容、程式修改重點、API 變更、重要技術細節、修改檔案與實際 note。工具會從 Redmine API 找到 `已解決` 狀態並直接套用，不顯示互動式狀態選單。
 
 原始 Issue description 會保留原始內容，供未來其它內容使用。AI 可產生多張流程圖，每張流程圖都有穩定的用途 ID，流程圖會放在 notes（公司 Redmine 已支援 notes Mermaid）。更新摘要會使用 Markdown 標題、項目符號與雙反引號標示程式路徑、API path、function 與 class。只有找到明確測試或驗證證據時才會加入驗證段落：

@@ -11,7 +11,7 @@ export default {
   // AI 設定
   ai: {
     model: 'gpt-5.6-luna', // AI 模型：gpt-5.6-luna
-    maxDiffLength: 8000, // 最大 diff 長度（字元）- 太小會導致 AI 看不到完整變更
+    maxDiffLength: 10000, // 最大 diff 長度（字元）- 太小會導致 AI 看不到完整變更
     maxRetries: 3, // API 失敗時的最大重試次數
   },
 
