@@ -10,6 +10,52 @@ import { PRError } from '../utils/helpers.js';
 const MAX_BUFFER_SIZE = CONSTANTS.MAX_BUFFER_SIZE;
 const DIFF_CONTEXT_LINES = CONSTANTS.DIFF_CONTEXT_LINES;
 
+function parseReleaseBranchVersion(branchName) {
+  const normalized = branchName.replace(/^origin\//, '');
+  const semverMatch = normalized.match(/^release-(\d+)\.(\d+)\.(\d+)$/i);
+  if (semverMatch) {
+    return {
+      cadence: 'semver',
+      major: Number(semverMatch[1]),
+      minor: Number(semverMatch[2]),
+      patch: Number(semverMatch[3]),
+    };
+  }
+
+  const cycleMatch = normalized.match(/^release-(\d{4})-([mw])(\d+)(?:\.(\d+))?$/i);
+  if (!cycleMatch) return null;
+
+  return {
+    cadence: cycleMatch[2].toLowerCase(),
+    year: Number(cycleMatch[1]),
+    cycle: Number(cycleMatch[3]),
+    patch: Number(cycleMatch[4] || 0),
+  };
+}
+
+function compareReleaseBranches(left, right) {
+  const leftVersion = parseReleaseBranchVersion(left);
+  const rightVersion = parseReleaseBranchVersion(right);
+
+  if (!leftVersion || !rightVersion) {
+    return right.localeCompare(left, undefined, { numeric: true });
+  }
+
+  if (leftVersion.cadence === 'semver' && rightVersion.cadence === 'semver') {
+    return (
+      rightVersion.major - leftVersion.major ||
+      rightVersion.minor - leftVersion.minor ||
+      rightVersion.patch - leftVersion.patch
+    );
+  }
+
+  return (
+    rightVersion.year - leftVersion.year ||
+    rightVersion.cycle - leftVersion.cycle ||
+    rightVersion.patch - leftVersion.patch
+  );
+}
+
 export class GitOperations {
   /**
    * 執行 Git 命令
@@ -86,8 +132,8 @@ export class GitOperations {
     const branches = GitOperations.detectReleaseBranches();
     if (branches.length === 0) return null;
 
-    const monthlyBranches = branches.filter((b) => b.includes('-m'));
-    const weeklyBranches = branches.filter((b) => b.includes('-w'));
+    const monthlyBranches = branches.filter((b) => parseReleaseBranchVersion(b)?.cadence === 'm');
+    const weeklyBranches = branches.filter((b) => parseReleaseBranchVersion(b)?.cadence === 'w');
     const priorityBranches =
       monthlyBranches.length > 0
         ? monthlyBranches
@@ -95,7 +141,7 @@ export class GitOperations {
           ? weeklyBranches
           : branches;
 
-    priorityBranches.sort().reverse();
+    priorityBranches.sort(compareReleaseBranches);
     return priorityBranches[0] || null;
   }
 
